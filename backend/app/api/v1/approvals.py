@@ -1,0 +1,152 @@
+"""Approvals API — full CRUD + approve/reject shortcuts + status counts. Redis-cached."""
+from datetime import datetime
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func, desc
+from pydantic import BaseModel
+from app.core.database import get_db
+from app.core.redis_client import cache
+from app.models.models import Approval, Invoice
+
+router = APIRouter()
+ORG_ID = "org_demo_001"
+
+
+class ApprovalDecision(BaseModel):
+    decision: str  # approve | reject | escalate
+    notes: Optional[str] = None
+    decision_by: str = "user@example.com"
+
+
+@router.get("/")
+async def list_approvals(
+    status: Optional[str] = None,
+    skip: int = 0,
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+):
+    """List approvals with status counts. Cached 10s."""
+    cache_key = f"{ORG_ID}:{status}:{skip}:{limit}"
+    cached = await cache.get("approvals", cache_key)
+    if cached:
+        return cached
+
+    # Main query
+    query = select(Approval).where(Approval.org_id == ORG_ID).order_by(desc(Approval.created_at))
+    if status:
+        query = query.where(Approval.status == status)
+    query = query.offset(skip).limit(limit)
+    result = await db.execute(query)
+    approvals = result.scalars().all()
+
+    # Total count
+    total_q = select(func.count(Approval.id)).where(Approval.org_id == ORG_ID)
+    total = (await db.execute(total_q)).scalar_one_or_none() or 0
+
+    # Status breakdown counts
+    counts_result = await db.execute(
+        select(Approval.status, func.count(Approval.id).label("cnt"))
+        .where(Approval.org_id == ORG_ID)
+        .group_by(Approval.status)
+    )
+    counts = {r.status: r.cnt for r in counts_result.all()}
+
+    response = {
+        "approvals": [_approval_to_dict(a) for a in approvals],
+        "total": total,
+        "counts": counts,
+    }
+    await cache.set("approvals", response, 10, cache_key)
+    return response
+
+
+@router.get("/{approval_id}")
+async def get_approval(approval_id: str, db: AsyncSession = Depends(get_db)):
+    approval = await db.get(Approval, approval_id)
+    if not approval:
+        raise HTTPException(status_code=404, detail="Approval not found")
+    return _approval_to_dict(approval)
+
+
+@router.post("/{approval_id}/approve")
+async def approve(approval_id: str, db: AsyncSession = Depends(get_db)):
+    """Quick approve endpoint (no body required)."""
+    return await _decide(approval_id, "approve", db)
+
+
+@router.post("/{approval_id}/reject")
+async def reject(approval_id: str, db: AsyncSession = Depends(get_db)):
+    """Quick reject endpoint (no body required)."""
+    return await _decide(approval_id, "reject", db)
+
+
+@router.post("/{approval_id}/decide")
+async def decide_approval(
+    approval_id: str,
+    decision: ApprovalDecision,
+    db: AsyncSession = Depends(get_db),
+):
+    return await _decide(approval_id, decision.decision, db, decision.notes, decision.decision_by)
+
+
+async def _decide(
+    approval_id: str,
+    decision: str,
+    db: AsyncSession,
+    notes: Optional[str] = None,
+    decision_by: str = "system",
+):
+    approval = await db.get(Approval, approval_id)
+    if not approval:
+        raise HTTPException(status_code=404, detail="Approval not found")
+    if approval.status != "pending":
+        raise HTTPException(status_code=400, detail=f"Approval already {approval.status}")
+
+    approval.status = decision
+    approval.decision_by = decision_by
+    approval.decision_at = datetime.utcnow()
+    approval.notes = notes
+
+    # Update invoice status accordingly
+    if approval.invoice_id:
+        invoice = await db.get(Invoice, approval.invoice_id)
+        if invoice:
+            invoice.status = "approved" if decision == "approve" else "rejected"
+            invoice.updated_at = datetime.utcnow()
+
+    await db.commit()
+    await cache.invalidate_pattern("approvals")
+    await cache.invalidate_pattern("dashboard")
+    await cache.invalidate_pattern("invoices")
+    return _approval_to_dict(approval)
+
+
+@router.get("/stats/pending-count")
+async def pending_count(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(func.count(Approval.id)).where(Approval.org_id == ORG_ID, Approval.status == "pending")
+    )
+    return {"pending_count": result.scalar_one_or_none() or 0}
+
+
+def _approval_to_dict(a: Approval) -> dict:
+    return {
+        "id": a.id,
+        "invoice_id": a.invoice_id,
+        "status": a.status,
+        "requested_by": a.requested_by,
+        "assigned_to": a.assigned_to,
+        "decision_by": a.decision_by,
+        "decision_at": a.decision_at.isoformat() if a.decision_at else None,
+        "risk_score": float(a.risk_score or 0),
+        "risk_level": a.risk_level,
+        "ai_recommendation": a.ai_recommendation,
+        "ai_explanation": a.ai_explanation,
+        "amount": float(a.amount or 0),
+        "currency": a.currency,
+        "notes": a.notes,
+        "policy_checks": a.policy_checks or [],
+        "expires_at": a.expires_at.isoformat() if a.expires_at else None,
+        "created_at": a.created_at.isoformat(),
+    }

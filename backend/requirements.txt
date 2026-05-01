@@ -1,0 +1,60 @@
+# Core API
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+
+# Database
+sqlalchemy==2.0.35
+alembic==1.13.3
+psycopg2-binary==2.9.9
+asyncpg==0.29.0
+
+# Pydantic / settings
+pydantic==2.9.2
+pydantic-settings==2.5.2
+
+# AI — pinned compatible set
+openai==1.57.0
+langchain==0.3.3
+langchain-openai==0.2.3
+langchain-community==0.3.2
+
+# API utilities
+python-multipart==0.0.12
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+httpx==0.27.2
+
+# Infrastructure
+redis==5.1.1
+qdrant-client==1.11.3
+
+# Document processing
+PyPDF2==3.0.1
+pillow==10.4.0
+aiofiles==24.1.0
+pytesseract==0.3.13
+pdf2image==1.17.0
+fpdf2==2.8.1
+python-docx==1.1.2
+
+# Data & ML
+python-dateutil==2.9.0.post0
+pandas==2.2.3
+numpy==1.26.4
+scikit-learn==1.5.2
+scipy==1.14.1
+
+# Tokenization
+tiktoken==0.7.0
+
+# Cloud
+boto3==1.35.32
+
+# Async / real-time
+websockets==13.1
+
+# Utilities
+python-dotenv==1.0.1
+loguru==0.7.2
+rich==13.9.2
+celery==5.4.0

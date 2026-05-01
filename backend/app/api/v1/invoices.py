@@ -1,0 +1,435 @@
+"""Invoice API routes — full CRUD + AI pipeline with Redis caching + Qdrant dedup."""
+import os
+import uuid
+import aiofiles
+from datetime import datetime
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, BackgroundTasks
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func, desc
+from pydantic import BaseModel
+from loguru import logger
+
+from app.core.database import get_db
+from app.core.config import settings
+from app.core.redis_client import cache, TTL_DASHBOARD
+from app.core.vector_store import vector_store
+from app.models.models import Invoice, Vendor, Approval, AuditLog, Organization
+from app.agents.invoice_agent import invoice_agent
+from app.agents.compliance_agent import compliance_agent
+
+router = APIRouter()
+ORG_ID = "org_demo_001"   # Replace with Clerk org extraction per-request
+
+
+class InvoiceUpdate(BaseModel):
+    status: Optional[str] = None
+    notes: Optional[str] = None
+    due_date: Optional[datetime] = None
+
+
+async def extract_text_from_file(file_path: str, content_type: str) -> str:
+    """Extract text from PDF or image file."""
+    try:
+        if "pdf" in content_type.lower():
+            import PyPDF2
+            text = ""
+            with open(file_path, "rb") as f:
+                reader = PyPDF2.PdfReader(f)
+                for page in reader.pages:
+                    text += page.extract_text() or ""
+            return text
+        else:
+            try:
+                import pytesseract
+                from PIL import Image
+                img = Image.open(file_path)
+                return pytesseract.image_to_string(img)
+            except ImportError:
+                return f"Image file: {os.path.basename(file_path)}"
+    except Exception as e:
+        logger.error(f"File extraction error: {e}")
+        return ""
+
+
+async def process_invoice_background(invoice_id: str, file_path: str, content_type: str, org_id: str):
+    """
+    Background task: full AI invoice processing pipeline.
+    Steps: OCR → AI Extraction → Qdrant Duplicate Check → Vendor Match →
+           Risk Analysis → Compliance → Approval Creation → Vector Index
+    """
+    from app.core.database import AsyncSessionLocal
+    from app.core.model_router import model_router
+
+    async with AsyncSessionLocal() as db:
+        try:
+            invoice = await db.get(Invoice, invoice_id)
+            if not invoice:
+                return
+
+            # ── Step 1: OCR extraction ───────────────────────────────────────
+            raw_text = await extract_text_from_file(file_path, content_type)
+            invoice.ocr_raw_text = raw_text
+            invoice.status = "processing"
+            await db.commit()
+
+            # ── Step 2: AI field extraction (GPT-4o-mini) ───────────────────
+            extracted = await invoice_agent.extract_from_text(
+                raw_text or f"Invoice file: {os.path.basename(file_path)}"
+            )
+            invoice.extracted_fields = extracted
+            invoice.invoice_number = extracted.get("invoice_number")
+            invoice.description = extracted.get("description")
+
+            if extracted.get("amount"):
+                invoice.amount = float(extracted["amount"] or 0)
+            if extracted.get("tax_amount"):
+                invoice.tax_amount = float(extracted["tax_amount"] or 0)
+            if extracted.get("total_amount"):
+                invoice.total_amount = float(extracted["total_amount"] or 0)
+            if extracted.get("currency"):
+                invoice.currency = extracted["currency"]
+            if extracted.get("due_date"):
+                try:
+                    invoice.due_date = datetime.fromisoformat(extracted["due_date"])
+                except Exception:
+                    pass
+
+            await db.commit()
+
+            # ── Step 3: Qdrant duplicate detection ──────────────────────────
+            # Build embedding text from extracted fields
+            embed_text = (
+                f"{extracted.get('vendor_name', '')} "
+                f"{extracted.get('invoice_number', '')} "
+                f"{extracted.get('total_amount', '')} "
+                f"{extracted.get('currency', '')} "
+                f"{extracted.get('invoice_date', '')} "
+                f"{extracted.get('description', '')}"
+            ).strip()
+
+            embedding = await model_router.embed(embed_text)
+
+            duplicates = await vector_store.find_duplicate_invoices(
+                embedding=embedding,
+                org_id=org_id,
+                threshold=0.94,
+                exclude_id=invoice_id,
+            )
+            if duplicates:
+                invoice.is_duplicate = True
+                invoice.status = "duplicate"
+                await db.commit()
+                logger.warning(f"Invoice {invoice_id} flagged as duplicate: {duplicates[0]}")
+                # Still index it
+                await vector_store.upsert_invoice(
+                    invoice_id=invoice_id,
+                    embedding=embedding,
+                    payload={"org_id": org_id, **extracted},
+                )
+                return
+
+            # Index invoice in Qdrant for future dedup
+            await vector_store.upsert_invoice(
+                invoice_id=invoice_id,
+                embedding=embedding,
+                payload={"org_id": org_id, **extracted},
+            )
+
+            # ── Step 4: Semantic vendor matching via Qdrant ──────────────────
+            if extracted.get("vendor_name"):
+                vendor_embed_text = f"{extracted['vendor_name']} {extracted.get('description', '')}"
+                vendor_embedding = await model_router.embed(vendor_embed_text)
+
+                similar_vendors = await vector_store.find_similar_vendors(
+                    embedding=vendor_embedding,
+                    org_id=org_id,
+                    threshold=0.88,
+                    limit=1,
+                )
+
+                if similar_vendors:
+                    # Matched existing vendor semantically
+                    vendor = await db.get(Vendor, similar_vendors[0]["vendor_id"])
+                    if vendor:
+                        invoice.vendor_id = vendor.id
+                        logger.info(f"Vendor matched via Qdrant: {vendor.name} (score={similar_vendors[0]['score']:.3f})")
+                else:
+                    # New vendor — create + index in Qdrant
+                    result = await db.execute(
+                        select(Vendor).where(
+                            Vendor.org_id == org_id,
+                            Vendor.name.ilike(f"%{extracted['vendor_name'][:50]}%"),
+                        ).limit(1)
+                    )
+                    vendor = result.scalar_one_or_none()
+                    if not vendor:
+                        vendor = Vendor(
+                            org_id=org_id,
+                            name=extracted["vendor_name"],
+                            email=extracted.get("vendor_email"),
+                            risk_score=20.0,
+                            risk_level="low",
+                        )
+                        db.add(vendor)
+                        await db.flush()
+
+                    invoice.vendor_id = vendor.id
+
+                    # Index new vendor in Qdrant
+                    await vector_store.upsert_vendor(
+                        vendor_id=str(vendor.id),
+                        embedding=vendor_embedding,
+                        payload={
+                            "org_id": org_id,
+                            "name": vendor.name,
+                            "category": getattr(vendor, "category", ""),
+                            "risk_level": vendor.risk_level,
+                            "risk_score": float(vendor.risk_score or 0),
+                            "is_verified": bool(getattr(vendor, "is_verified", False)),
+                        },
+                    )
+
+            # ── Step 5: Risk analysis (GPT-4o via compliance model) ──────────
+            vendor_history = {}
+            if invoice.vendor_id:
+                vendor_obj = await db.get(Vendor, invoice.vendor_id)
+                if vendor_obj:
+                    vendor_history = {
+                        "name": vendor_obj.name,
+                        "risk_level": vendor_obj.risk_level,
+                        "risk_score": float(vendor_obj.risk_score or 0),
+                        "total_paid": float(getattr(vendor_obj, "total_paid", 0) or 0),
+                        "is_verified": bool(getattr(vendor_obj, "is_verified", False)),
+                    }
+
+            risk = await invoice_agent.analyze_risk(
+                extracted_fields=extracted,
+                vendor_history=vendor_history,
+            )
+            invoice.risk_level = risk.get("risk_level", "low")
+            invoice.risk_score = float(risk.get("risk_score", 0))
+            invoice.policy_violations = risk.get("policy_violations", [])
+
+            # ── Step 6: Compliance check (GPT-4o) ───────────────────────────
+            compliance_result = await compliance_agent.evaluate(
+                entity_type="invoice",
+                entity_data={**extracted, "risk_level": invoice.risk_level, "risk_score": invoice.risk_score},
+                org_id=org_id,
+            )
+            if compliance_result.get("violations"):
+                invoice.policy_violations = (invoice.policy_violations or []) + compliance_result["violations"]
+
+            invoice.status = "awaiting_approval"
+            invoice.ai_confidence = float(risk.get("confidence", 0.92))
+            await db.commit()
+
+            # ── Step 7: Create approval record ──────────────────────────────
+            approval = Approval(
+                org_id=org_id,
+                invoice_id=invoice_id,
+                status="pending",
+                amount=invoice.total_amount or invoice.amount,
+                currency=invoice.currency,
+                risk_score=invoice.risk_score,
+                risk_level=invoice.risk_level,
+                ai_recommendation=risk.get("recommendation", "approve"),
+                ai_explanation=risk.get("explanation", "AI analysis complete"),
+                policy_checks=invoice.policy_violations,
+            )
+            db.add(approval)
+            await db.commit()
+
+            # ── Step 8: Invalidate Redis caches ─────────────────────────────
+            await cache.invalidate_pattern("dashboard")
+            await cache.invalidate_pattern("analytics")
+
+            # ── Step 9: Publish real-time event ─────────────────────────────
+            await cache.publish("invoice_processed", {
+                "invoice_id": invoice_id,
+                "status": invoice.status,
+                "risk_level": invoice.risk_level,
+                "amount": float(invoice.total_amount or 0),
+                "currency": invoice.currency,
+            })
+
+            logger.info(f"✅ Invoice {invoice_id} processed: risk={invoice.risk_level}, status={invoice.status}")
+
+        except Exception as e:
+            logger.error(f"Invoice processing failed for {invoice_id}: {e}")
+            async with AsyncSessionLocal() as db2:
+                inv = await db2.get(Invoice, invoice_id)
+                if inv:
+                    inv.status = "pending"
+                    await db2.commit()
+
+
+@router.post("/upload")
+async def upload_invoice(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    currency: str = Form("USD"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload and enqueue invoice for the AI processing pipeline."""
+    file_ext = os.path.splitext(file.filename or "invoice.pdf")[1]
+    file_name = f"{uuid.uuid4()}{file_ext}"
+    file_path = os.path.join(settings.STORAGE_LOCAL_PATH, file_name)
+
+    os.makedirs(settings.STORAGE_LOCAL_PATH, exist_ok=True)
+    async with aiofiles.open(file_path, "wb") as f:
+        content = await file.read()
+        await f.write(content)
+
+    invoice = Invoice(
+        org_id=ORG_ID,
+        file_path=file_path,
+        currency=currency,
+        status="processing",
+        amount=0,
+        total_amount=0,
+    )
+    db.add(invoice)
+    await db.flush()
+    invoice_id = invoice.id
+    await db.commit()
+
+    background_tasks.add_task(
+        process_invoice_background,
+        invoice_id=invoice_id,
+        file_path=file_path,
+        content_type=file.content_type or "application/pdf",
+        org_id=ORG_ID,
+    )
+
+    return {
+        "id": invoice_id,
+        "status": "processing",
+        "message": "Invoice uploaded. AI pipeline started (OCR → Extract → Dedup → Risk → Approval).",
+    }
+
+
+@router.get("/")
+async def list_invoices(
+    status: Optional[str] = None,
+    currency: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+):
+    """List all invoices with optional filtering. Redis-cached for 30s."""
+    cache_key = f"{ORG_ID}:{status}:{currency}:{skip}:{limit}"
+    cached = await cache.get("invoices", cache_key)
+    if cached:
+        return cached
+
+    query = select(Invoice).where(Invoice.org_id == ORG_ID).order_by(desc(Invoice.created_at))
+    if status:
+        query = query.where(Invoice.status == status)
+    if currency:
+        query = query.where(Invoice.currency == currency)
+    query = query.offset(skip).limit(limit)
+
+    result = await db.execute(query)
+    invoices = result.scalars().all()
+
+    # Total count
+    count_q = select(func.count(Invoice.id)).where(Invoice.org_id == ORG_ID)
+    total = (await db.execute(count_q)).scalar_one_or_none() or 0
+
+    response = {
+        "invoices": [_invoice_to_dict(inv) for inv in invoices],
+        "total": total,
+    }
+    await cache.set("invoices", response, 30, cache_key)
+    return response
+
+
+@router.get("/stats/summary")
+async def invoice_stats(db: AsyncSession = Depends(get_db)):
+    """Invoice statistics — cached 60s."""
+    cached = await cache.get("invoice_stats", ORG_ID)
+    if cached:
+        return cached
+
+    result = await db.execute(
+        select(
+            func.count(Invoice.id).label("total"),
+            func.sum(Invoice.total_amount).label("total_amount"),
+            Invoice.status,
+            Invoice.currency,
+        ).where(Invoice.org_id == ORG_ID).group_by(Invoice.status, Invoice.currency)
+    )
+    rows = result.all()
+    response = {
+        "stats": [
+            {"count": r.total, "total_amount": float(r.total_amount or 0), "status": r.status, "currency": r.currency}
+            for r in rows
+        ]
+    }
+    await cache.set("invoice_stats", response, 60, ORG_ID)
+    return response
+
+
+@router.get("/{invoice_id}")
+async def get_invoice(invoice_id: str, db: AsyncSession = Depends(get_db)):
+    """Get single invoice details."""
+    invoice = await db.get(Invoice, invoice_id)
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    return _invoice_to_dict(invoice)
+
+
+@router.patch("/{invoice_id}")
+async def update_invoice(invoice_id: str, update: InvoiceUpdate, db: AsyncSession = Depends(get_db)):
+    """Update invoice fields and invalidate caches."""
+    invoice = await db.get(Invoice, invoice_id)
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    for field, value in update.model_dump(exclude_none=True).items():
+        setattr(invoice, field, value)
+    invoice.updated_at = datetime.utcnow()
+    await db.commit()
+    await cache.invalidate_pattern("invoices")
+    await cache.invalidate_pattern("dashboard")
+    return _invoice_to_dict(invoice)
+
+
+@router.post("/{invoice_id}/analyze")
+async def analyze_invoice(invoice_id: str, db: AsyncSession = Depends(get_db)):
+    """Re-run AI analysis on an existing invoice."""
+    invoice = await db.get(Invoice, invoice_id)
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    risk = await invoice_agent.analyze_risk(invoice.extracted_fields or {})
+    invoice.risk_level = risk.get("risk_level", "low")
+    invoice.risk_score = float(risk.get("risk_score", 0))
+    invoice.policy_violations = risk.get("policy_violations", [])
+    await db.commit()
+    await cache.invalidate_pattern("invoices")
+    return {"risk": risk, "invoice_id": invoice_id}
+
+
+def _invoice_to_dict(inv: Invoice) -> dict:
+    return {
+        "id": inv.id,
+        "invoice_number": inv.invoice_number,
+        "status": inv.status,
+        "amount": float(inv.amount or 0),
+        "currency": inv.currency,
+        "tax_amount": float(inv.tax_amount or 0),
+        "total_amount": float(inv.total_amount or 0),
+        "risk_level": inv.risk_level,
+        "risk_score": float(inv.risk_score or 0),
+        "ai_confidence": float(inv.ai_confidence or 0),
+        "is_duplicate": inv.is_duplicate,
+        "description": inv.description,
+        "invoice_date": inv.invoice_date.isoformat() if inv.invoice_date else None,
+        "due_date": inv.due_date.isoformat() if inv.due_date else None,
+        "paid_at": inv.paid_at.isoformat() if inv.paid_at else None,
+        "extracted_fields": inv.extracted_fields,
+        "policy_violations": inv.policy_violations,
+        "created_at": inv.created_at.isoformat(),
+        "vendor_id": inv.vendor_id,
+    }

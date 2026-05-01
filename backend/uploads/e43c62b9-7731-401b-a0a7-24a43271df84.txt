@@ -1,0 +1,8 @@
+INVOICE
+Vendor: Test Corp Ltd
+Invoice #: TEST-001
+Date: 2026-05-01
+Amount: $1,500.00 USD
+Description: Software Services - Monthly Subscription
+Tax: $150.00
+Total: $1,650.00
