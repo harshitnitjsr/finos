@@ -16,6 +16,7 @@ from app.core.config import settings
 from app.core.database import engine, Base
 from app.core.redis_client import redis_client, cache
 from app.core.vector_store import vector_store
+from app.core.temporal import temporal_manager
 from app.api.v1.router import api_router
 from app.core.seed import seed_demo_data
 
@@ -42,6 +43,13 @@ async def lifespan(app: FastAPI):
 
     # Initialize Qdrant vector store (create collections)
     await vector_store.initialize()
+
+    # Initialize Temporal Client
+    try:
+        await temporal_manager.connect()
+        logger.info("✅ Temporal client connected")
+    except Exception as e:
+        logger.error(f"⚠️ Temporal connection failed (workflows unavailable): {e}")
 
     # Seed demo data if empty
     await seed_demo_data()

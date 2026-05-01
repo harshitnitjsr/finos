@@ -100,44 +100,42 @@ Return JSON: {
 class ComplianceAgent:
     """AI agent for policy enforcement and compliance evaluation."""
 
-    def evaluate_rules(self, transaction: dict, policies: list[dict] = None) -> list[dict]:
-        """Evaluate rule-based policies (no AI required)."""
-        violations = []
-        active_policies = policies or DEFAULT_POLICIES
-        amount = float(transaction.get("amount", 0))
-        is_duplicate = transaction.get("is_duplicate", False)
-        vendor_risk = float(transaction.get("vendor_risk_score", 0))
-        vendor_verified = transaction.get("vendor_verified", False)
+    OPA_URL = "http://localhost:8181/v1/data/finance/compliance"
 
-        for policy in active_policies:
-            violation = None
-
-            if policy["id"] == "POL-001" and amount > 10000:
-                violation = policy
-            elif policy["id"] == "POL-002" and vendor_risk > 70 and not vendor_verified:
-                violation = policy
-            elif policy["id"] == "POL-004" and is_duplicate:
-                violation = policy
-
-            if violation:
-                violations.append({
-                    "policy_id": violation["id"],
-                    "policy_name": violation["name"],
-                    "reason": violation["description"],
-                    "severity": violation["severity"],
-                    "action": violation["action"],
-                })
-
-        return violations
+    async def evaluate_rules_opa(self, transaction: dict) -> list[dict]:
+        """Evaluate rule-based policies using Open Policy Agent (OPA)."""
+        import httpx
+        opa_input = {
+            "input": {
+                "amount": float(transaction.get("amount") or 0),
+                "has_approval": False,
+                "vendor_risk_score": float(transaction.get("vendor_risk_score") or 0),
+                "category_average": 2000.0,
+                "is_duplicate": transaction.get("is_duplicate", False),
+                "is_international": transaction.get("is_international", False)
+            }
+        }
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(self.OPA_URL, json=opa_input, timeout=5.0)
+                if resp.status_code == 200:
+                    opa_data = resp.json().get("result", {})
+                    if not opa_data.get("allow", False):
+                        return opa_data.get("violations", [])
+        except Exception as e:
+            from loguru import logger
+            logger.error(f"OPA Evaluation failed: {e}")
+        return []
 
     async def evaluate(self, transaction: dict, policies: Optional[list] = None) -> dict:
-        """Full compliance evaluation using AI + rule engine."""
-        # Rule-based check first (fast, no AI cost)
-        rule_violations = self.evaluate_rules(transaction, policies)
+        """Full compliance evaluation using AI + OPA rule engine."""
+        # Rule-based check first via OPA
+        rule_violations = await self.evaluate_rules_opa(transaction)
 
         # AI-enhanced evaluation for complex cases
         try:
-            policies_text = json.dumps(policies or DEFAULT_POLICIES, indent=2)
+            ai_policies = [p for p in (policies or DEFAULT_POLICIES) if p["id"] not in ["POL-004"]]
+            policies_text = json.dumps(ai_policies, indent=2)
             response = await model_router.complete(
                 task=ModelTask.COMPLIANCE,
                 system_prompt=POLICY_EVALUATION_PROMPT,

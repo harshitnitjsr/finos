@@ -82,8 +82,8 @@ async def seed_demo_data():
             vendors.append(vendor)
         await db.flush()
 
-        # Create invoices
-        statuses = ["approved", "approved", "approved", "awaiting_approval", "paid", "paid", "overdue", "pending"]
+        # Create invoices (Make all of them pending for easy UI testing)
+        statuses = ["pending"]
         invoice_currencies = ["USD", "USD", "USD", "INR", "EUR", "GBP", "USD", "USD"]
         amounts = [12500, 8200, 45000, 850000, 3200, 1500, 99999, 2800, 15000, 38000, 7500, 22000]
 

@@ -1,6 +1,6 @@
 """API Router — combines all route modules."""
 from fastapi import APIRouter
-from app.api.v1 import invoices, expenses, approvals, analytics, agents, workflows, vendors, treasury, insights, chat
+from app.api.v1 import invoices, expenses, approvals, analytics, agents, workflows, vendors, treasury, insights, chat, temporal_api
 
 api_router = APIRouter()
 
@@ -14,3 +14,4 @@ api_router.include_router(vendors.router, prefix="/vendors", tags=["Vendors"])
 api_router.include_router(treasury.router, prefix="/treasury", tags=["Treasury"])
 api_router.include_router(insights.router, prefix="/insights", tags=["AI Insights"])
 api_router.include_router(chat.router, prefix="/chat", tags=["AI Chat"])
+api_router.include_router(temporal_api.router, prefix="/temporal", tags=["Temporal Workflows"])

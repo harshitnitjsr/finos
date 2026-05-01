@@ -49,3 +49,8 @@ __pycache__
 __pycache__/*
 __pycache__/
 
+# Large Binaries
+temporal.exe
+temporal.tar.gz
+backend/temporal.exe
+backend/temporal.tar.gz

@@ -162,16 +162,24 @@ export default function ApprovalsPage() {
                           <button
                             onClick={() => actionMutation.mutate({ id: appr.id as string, action: "approve" })}
                             disabled={actionMutation.isPending}
-                            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all hover:opacity-90"
+                            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all hover:opacity-90 disabled:opacity-50"
                             style={{ background: "rgba(16,185,129,0.15)", color: "#10b981", border: "1px solid rgba(16,185,129,0.3)" }}>
-                            <CheckCircle size={14} /> Approve
+                            {actionMutation.isPending && actionMutation.variables?.id === appr.id && actionMutation.variables?.action === "approve" ? (
+                              <><span className="w-3 h-3 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin"></span> Processing...</>
+                            ) : (
+                              <><CheckCircle size={14} /> Approve</>
+                            )}
                           </button>
                           <button
                             onClick={() => actionMutation.mutate({ id: appr.id as string, action: "reject" })}
                             disabled={actionMutation.isPending}
-                            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all hover:opacity-90"
+                            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all hover:opacity-90 disabled:opacity-50"
                             style={{ background: "rgba(244,63,94,0.1)", color: "#f43f5e", border: "1px solid rgba(244,63,94,0.2)" }}>
-                            <XCircle size={14} /> Reject
+                            {actionMutation.isPending && actionMutation.variables?.id === appr.id && actionMutation.variables?.action === "reject" ? (
+                              <><span className="w-3 h-3 border-2 border-rose-400 border-t-transparent rounded-full animate-spin"></span> Processing...</>
+                            ) : (
+                              <><XCircle size={14} /> Reject</>
+                            )}
                           </button>
                         </div>
                       )}

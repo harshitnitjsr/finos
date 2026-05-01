@@ -108,12 +108,25 @@ async def _decide(
     approval.decision_at = datetime.utcnow()
     approval.notes = notes
 
-    # Update invoice status accordingly
+    # Update invoice status accordingly and FIRE TEMPORAL SIGNAL to wake up the workflow!
     if approval.invoice_id:
+        from app.core.temporal import temporal_manager
+        
         invoice = await db.get(Invoice, approval.invoice_id)
         if invoice:
             invoice.status = "approved" if decision == "approve" else "rejected"
             invoice.updated_at = datetime.utcnow()
+            
+            try:
+                # If there's an active workflow for this invoice, wake it up!
+                if temporal_manager.client:
+                    handle = temporal_manager.client.get_workflow_handle(f"invoice-workflow-{approval.invoice_id}")
+                    if decision == "approve":
+                        await handle.signal("approve_invoice")
+                    elif decision == "reject":
+                        await handle.signal("reject_invoice")
+            except Exception as e:
+                pass # Workflow might not exist or already completed, which is fine for generic approvals
 
     await db.commit()
     await cache.invalidate_pattern("approvals")

@@ -12,7 +12,6 @@ services:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U afos -d afos_db"]
       interval: 10s
@@ -42,6 +41,21 @@ services:
       - qdrant_data:/qdrant/storage
     environment:
       - QDRANT__SERVICE__HTTP_PORT=6333
+
+  opa:
+    image: openpolicyagent/opa:latest
+    container_name: afos_opa
+    ports:
+      - "8181:8181"
+    command:
+      - "run"
+      - "--server"
+      - "--addr"
+      - "0.0.0.0:8181"
+      - "--watch"
+      - "/policies"
+    volumes:
+      - ./policies:/policies
 
 volumes:
   postgres_data:

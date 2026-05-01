@@ -46,6 +46,32 @@ export default function InvoicesPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["invoices"] }),
   });
 
+  const startTemporalMutation = useMutation({
+    mutationFn: async (invoiceId: string) => {
+      const r = await fetch(`${API}/api/v1/temporal/invoice/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invoice_id: invoiceId })
+      });
+      if (!r.ok) throw new Error("Failed to start workflow");
+      return r.json();
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["invoices"] })
+  });
+
+  const approveTemporalMutation = useMutation({
+    mutationFn: async (invoiceId: string) => {
+      const r = await fetch(`${API}/api/v1/temporal/invoice/signal`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invoice_id: invoiceId, action: "approve" })
+      });
+      if (!r.ok) throw new Error("Failed to approve");
+      return r.json();
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["invoices"] })
+  });
+
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
@@ -237,6 +263,23 @@ export default function InvoicesPage() {
                   </div>
                 </div>
               )}
+              
+              <div className="flex gap-2 pt-4 mt-4 border-t border-slate-700/50">
+                <button 
+                  onClick={() => startTemporalMutation.mutate(selected.id as string)}
+                  disabled={startTemporalMutation.isPending || selected.status === "processing"}
+                  className="flex-1 py-2 bg-blue-500/20 text-blue-400 font-semibold rounded-lg text-xs hover:bg-blue-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                  {startTemporalMutation.isPending || selected.status === "processing" ? "AI Processing..." : "Start AI Workflow"}
+                </button>
+                {selected.status === "awaiting_approval" && (
+                  <button 
+                    onClick={() => approveTemporalMutation.mutate(selected.id as string)}
+                    disabled={approveTemporalMutation.isPending}
+                    className="flex-1 py-2 bg-emerald-500/20 text-emerald-400 font-semibold rounded-lg text-xs hover:bg-emerald-500/30 transition-all">
+                    {approveTemporalMutation.isPending ? "Approving..." : "Approve Payment"}
+                  </button>
+                )}
+              </div>
             </motion.div>
           )}
         </AnimatePresence>

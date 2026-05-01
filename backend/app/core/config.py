@@ -14,8 +14,16 @@ class Settings(BaseSettings):
     # Qdrant
     QDRANT_URL: str = "http://localhost:6333"
     
+    # Temporal
+    TEMPORAL_HOST: str = "localhost:7233"
+    TEMPORAL_NAMESPACE: str = "default"
+    TEMPORAL_TASK_QUEUE: str = "afos-task-queue"
+    
     # OpenAI
     OPENAI_API_KEY: str = ""
+    
+    # Stripe
+    STRIPE_SECRET_KEY: str = ""
     
     # Model Router
     MODEL_ROUTER_REASONING: str = "gpt-4o"
