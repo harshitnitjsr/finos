@@ -1,141 +1,511 @@
+"use client";
+
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { ArrowRight, BarChart3, Shield, Zap } from "lucide-react";
-import { auth } from "@/auth";
+import { motion, useScroll, useTransform, useSpring, useMotionValue } from "framer-motion";
+import { 
+  ArrowRight, 
+  BarChart3, 
+  Shield, 
+  Zap, 
+  Cpu, 
+  Globe, 
+  Play,
+  Activity,
+  Terminal,
+  Layers,
+  Fingerprint,
+  Bot,
+  Sparkles,
+  Send
+} from "lucide-react";
 
-export default async function HomePage() {
-  const session = await auth();
-  const isLoggedIn = !!session?.user;
+// --- Components ---
 
-  const ctaHref = isLoggedIn
-    ? session?.user?.onboardingComplete
-      ? "/dashboard"
-      : "/onboarding"
-    : "/auth/signin";
+const MagneticWrapper = ({ children }: { children: React.ReactNode }) => {
+  const ref = useRef<HTMLDivElement>(null);
+  const x = useMotionValue(0);
+  const y = useMotionValue(0);
+  const springX = useSpring(x, { stiffness: 150, damping: 15 });
+  const springY = useSpring(y, { stiffness: 150, damping: 15 });
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!ref.current) return;
+    const { clientX, clientY } = e;
+    const { left, top, width, height } = ref.current.getBoundingClientRect();
+    const centerX = left + width / 2;
+    const centerY = top + height / 2;
+    x.set((clientX - centerX) * 0.35);
+    y.set((clientY - centerY) * 0.35);
+  };
+
+  const handleMouseLeave = () => {
+    x.set(0);
+    y.set(0);
+  };
 
   return (
-    <div className="flex flex-col min-h-screen bg-black text-white selection:bg-indigo-500/30">
+    <motion.div
+      ref={ref}
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+      style={{ x: springX, y: springY }}
+      className="inline-block"
+    >
+      {children}
+    </motion.div>
+  );
+};
+
+export default function HomePage() {
+  const [mounted, setMounted] = useState(false);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const mockupRef = useRef<HTMLDivElement>(null);
+  
+  const { scrollYProgress } = useScroll();
+  const opacity = useTransform(scrollYProgress, [0, 0.1], [1, 0]);
+  const scale = useTransform(scrollYProgress, [0, 0.1], [1, 0.98]);
+
+  // Mockup 3D Tilt
+  const xTilt = useMotionValue(0);
+  const yTilt = useMotionValue(0);
+  const rotateX = useSpring(useTransform(yTilt, [-0.5, 0.5], [10, -10]));
+  const rotateY = useSpring(useTransform(xTilt, [-0.5, 0.5], [-10, 10]));
+
+  useEffect(() => {
+    setMounted(true);
+    const handleMouseMove = (e: MouseEvent) => {
+      setMousePos({ x: e.clientX, y: e.clientY });
+      
+      if (mockupRef.current) {
+        const { left, top, width, height } = mockupRef.current.getBoundingClientRect();
+        const mouseX = e.clientX - left;
+        const mouseY = e.clientY - top;
+        xTilt.set(mouseX / width - 0.5);
+        yTilt.set(mouseY / height - 0.5);
+      }
+    };
+    window.addEventListener("mousemove", handleMouseMove);
+    return () => window.removeEventListener("mousemove", handleMouseMove);
+  }, [xTilt, yTilt]);
+
+  if (!mounted) return <div className="min-h-screen bg-[#020617]" />;
+
+  return (
+    <div className="relative min-h-screen bg-[#020617] text-white selection:bg-emerald-500/30 overflow-x-hidden font-sans">
+      {/* Scroll Progress Bar */}
+      <motion.div 
+        className="fixed top-0 left-0 right-0 h-1 bg-emerald-500 z-[100] origin-left"
+        style={{ scaleX: scrollYProgress }}
+      />
+
+      {/* Noise Texture Overlay */}
+      <div className="fixed inset-0 z-50 pointer-events-none noise" />
+
+      {/* Dynamic Background */}
+      <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
+        <div 
+          className="absolute inset-0 z-0 opacity-40 transition-opacity duration-300"
+          style={{
+            background: `radial-gradient(800px circle at ${mousePos.x}px ${mousePos.y}px, rgba(16, 185, 129, 0.08), transparent 80%)`
+          }}
+        />
+        <div className="absolute inset-0 bg-grid opacity-20" />
+        <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-emerald-600/10 blur-[150px]" />
+        <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] rounded-full bg-lime-600/10 blur-[150px]" />
+      </div>
+
+      {/* Global Status Ticker */}
+      <div className="fixed top-0 left-0 w-full overflow-hidden whitespace-nowrap py-1.5 bg-emerald-600/10 backdrop-blur-md border-b border-white/5 z-[60]">
+        <div className="inline-block animate-[shimmer_10s_linear_infinite] px-4">
+          <span className="text-[10px] font-black tracking-widest uppercase opacity-60">
+            [SYS_ACTV] // [GRID_ONLINE] // [EMERALD_PROTO] // [SEC_OMEGA] // [SYS_ACTV] // [GRID_ONLINE] // [EMERALD_PROTO] // [SEC_OMEGA]
+          </span>
+        </div>
+      </div>
+
       {/* Navigation */}
-      <nav className="fixed top-0 w-full border-b border-white/10 bg-black/50 backdrop-blur-md z-50">
-        <div className="container mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-indigo-500 flex items-center justify-center">
-              <Zap className="w-5 h-5 text-white" />
+      <motion.nav 
+        initial={{ y: -100 }}
+        animate={{ y: 0 }}
+        className="fixed top-8 left-1/2 -translate-x-1/2 w-[90%] max-w-5xl border border-white/5 bg-[#050810]/50 backdrop-blur-2xl z-50 px-8 py-4 rounded-2xl shadow-2xl"
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 group cursor-pointer">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-lime-600 flex items-center justify-center shadow-lg shadow-emerald-500/20 group-hover:rotate-12 transition-transform duration-500">
+              <Zap className="w-6 h-6 text-white" />
             </div>
-            <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-cyan-400">
-              AFOS
-            </span>
+            <span className="text-2xl font-black tracking-tight shiny-text uppercase">AFOS</span>
           </div>
-          <div className="flex gap-4">
-            {isLoggedIn ? (
-              <Link
-                href={session?.user?.onboardingComplete ? "/dashboard" : "/onboarding"}
-                className="px-4 py-2 text-sm font-medium bg-white text-black rounded-full hover:bg-white/90 transition-colors"
+          
+          <div className="hidden md:flex items-center gap-10 text-xs font-black tracking-widest text-white/30 uppercase">
+            <Link href="#features" className="hover:text-white transition-colors">Infrastructure</Link>
+            <Link href="#pipeline" className="hover:text-white transition-colors">Neural Mesh</Link>
+            <Link href="/dashboard" className="hover:text-white text-emerald-500 transition-colors">AI Core</Link>
+          </div>
+
+          <div className="flex items-center gap-6">
+            <Link href="/auth/signin" className="hidden sm:block text-xs font-black tracking-widest uppercase text-white/40 hover:text-white transition-colors">Log In</Link>
+            <MagneticWrapper>
+              <Link 
+                href="/auth/signin"
+                className="px-6 py-2.5 bg-emerald-600 text-white text-xs font-black tracking-widest uppercase rounded-xl hover:bg-white hover:text-black transition-all duration-300 shadow-xl shadow-emerald-500/20"
               >
-                Go to Dashboard
+                Launch OS
               </Link>
-            ) : (
-              <>
-                <Link
-                  href="/auth/signin"
-                  className="px-4 py-2 text-sm font-medium text-white/70 hover:text-white transition-colors"
-                >
-                  Log in
-                </Link>
-                <Link
-                  href="/auth/signin"
-                  className="px-4 py-2 text-sm font-medium bg-white text-black rounded-full hover:bg-white/90 transition-colors"
-                >
-                  Get Started
-                </Link>
-              </>
-            )}
+            </MagneticWrapper>
           </div>
         </div>
-      </nav>
+      </motion.nav>
 
-      {/* Hero Section */}
-      <section className="relative pt-32 pb-20 overflow-hidden">
-        <div
-          className="absolute inset-x-0 -top-40 -z-10 transform-gpu overflow-hidden blur-3xl sm:-top-80"
-          aria-hidden="true"
-        >
-          <div
-            className="relative left-[calc(50%-11rem)] aspect-[1155/678] w-[36.125rem] -translate-x-1/2 rotate-[30deg] bg-gradient-to-tr from-[#ff80b5] to-[#9089fc] opacity-20 sm:left-[calc(50%-30rem)] sm:w-[72.1875rem]"
-            style={{
-              clipPath:
-                "polygon(74.1% 44.1%, 100% 61.6%, 97.5% 26.9%, 85.5% 0.1%, 80.7% 2%, 72.5% 32.5%, 60.2% 62.4%, 52.4% 68.1%, 47.5% 58.3%, 45.2% 34.5%, 27.5% 76.7%, 0.1% 64.9%, 17.9% 100%, 27.6% 76.8%, 76.1% 97.7%, 74.1% 44.1%)",
-            }}
-          />
-        </div>
-
-        <div className="container mx-auto px-6 text-center">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-sm text-indigo-300 mb-8">
-            <span className="flex h-2 w-2 rounded-full bg-indigo-500"></span>
-            Reimagining AI-Driven Finance for Startups
-          </div>
-
-          <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-8">
-            Manage your finances <br />
-            <span className="bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-purple-400 to-cyan-400">
-              at the speed of light
-            </span>
-          </h1>
-
-          <p className="max-w-2xl mx-auto text-xl text-white/60 mb-10">
-            AFOS brings intelligent agents, real-time analytics, and automated
-            compliance into one beautiful platform.
-          </p>
-
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link
-              href={ctaHref}
-              className="flex items-center gap-2 px-8 py-4 text-base font-semibold bg-white text-black rounded-full hover:bg-gray-100 transition-all hover:scale-105"
+      <main className="relative z-10">
+        {/* Hero Section */}
+        <section className="pt-64 pb-32 px-6">
+          <div className="max-w-7xl mx-auto text-center">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              whileInView={{ opacity: 1, scale: 1 }}
+              viewport={{ once: true }}
+              className="inline-flex items-center gap-2 px-4 py-1.5 rounded-xl bg-white/5 border border-white/10 text-white/40 text-[10px] font-black uppercase tracking-widest mb-12"
             >
-              Start for free
-              <ArrowRight className="w-5 h-5" />
-            </Link>
-          </div>
-        </div>
-      </section>
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Connected to Global Financial Grid
+            </motion.div>
 
-      {/* Features Section */}
-      <section className="py-24 bg-black/50 border-y border-white/10">
-        <div className="container mx-auto px-6">
-          <div className="grid md:grid-cols-3 gap-12">
-            {[
-              {
-                icon: <Zap className="w-8 h-8 text-yellow-400" />,
-                title: "AI-Powered Approvals",
-                desc: "Our expense and compliance agents instantly review and process your financial transactions.",
-              },
-              {
-                icon: <BarChart3 className="w-8 h-8 text-cyan-400" />,
-                title: "Real-time Analytics",
-                desc: "Get deep insights into your cash flow, burn rate, and run-time with beautiful charts.",
-              },
-              {
-                icon: <Shield className="w-8 h-8 text-green-400" />,
-                title: "Automated Compliance",
-                desc: "Stay completely compliant with automatic categorization and policy enforcement.",
-              },
-            ].map((feature, i) => (
-              <div
-                key={i}
-                className="p-8 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
+            <motion.h1 
+              style={{ opacity, scale }}
+              className="text-5xl md:text-[7.5rem] font-black tracking-tight leading-[0.85] mb-12"
+            >
+              FINANCE. <br />
+              <span className="text-emerald-600 italic">AUTONOMOUS.</span>
+            </motion.h1>
+
+            <motion.p 
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              className="max-w-3xl mx-auto text-xl md:text-2xl text-white/30 font-medium mb-16 leading-relaxed"
+            >
+              The manual era is over. AFOS is an autonomous intelligence layer 
+              for your corporate treasury. Built to ingest, verify, and settle 
+              every transaction with zero human drift. <br />
+              <span className="text-emerald-500/60 block mt-4 font-black">
+                MOVE FROM RECORD-KEEPING TO AUTONOMOUS ORCHESTRATION.
+              </span>
+            </motion.p>
+
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-8 mb-32">
+              <MagneticWrapper>
+                <Link 
+                  href="/auth/signin"
+                  className="group relative inline-flex items-center justify-center px-12 py-6 bg-white text-black text-xl font-black rounded-2xl overflow-hidden transition-transform active:scale-95 shadow-2xl"
+                >
+                  <span className="relative z-10 flex items-center gap-3 tracking-tighter text-emerald-900 font-black">
+                    DEPLOY SYSTEM
+                    <ArrowRight className="w-6 h-6 group-hover:translate-x-2 transition-transform" />
+                  </span>
+                </Link>
+              </MagneticWrapper>
+              
+              <button className="flex items-center gap-4 text-white/30 hover:text-white text-sm font-black tracking-widest uppercase transition-all">
+                <div className="w-14 h-14 rounded-full border border-white/10 flex items-center justify-center hover:bg-white/5 transition-colors">
+                  <Play className="w-5 h-5 fill-current ml-1" />
+                </div>
+                View Protocol
+              </button>
+            </div>
+
+            {/* 3D Dashboard Mockup */}
+            <div className="perspective-[2000px]">
+              <motion.div
+                ref={mockupRef}
+                style={{ rotateX, rotateY }}
+                className="relative mx-auto max-w-6xl p-1 rounded-[3rem] bg-gradient-to-br from-emerald-500/30 via-white/5 to-transparent border border-white/10 shadow-[0_50px_100px_-20px_rgba(0,0,0,0.8)]"
               >
-                <div className="mb-6">{feature.icon}</div>
-                <h3 className="text-xl font-bold mb-3">{feature.title}</h3>
-                <p className="text-white/60 leading-relaxed">{feature.desc}</p>
-              </div>
-            ))}
+                <div className="bg-[#010314] rounded-[2.8rem] overflow-hidden border border-white/10 aspect-[16/10] relative group">
+                  <div className="absolute inset-0 bg-emerald-600/5 group-hover:opacity-100 opacity-0 transition-opacity" />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="grid grid-cols-12 w-full h-full p-12 gap-8 opacity-20">
+                      <div className="col-span-3 h-full border-r border-white/5 flex flex-col gap-10">
+                        <div className="w-full h-10 bg-white/10 rounded-xl" />
+                        <div className="space-y-4">
+                          <div className="w-3/4 h-6 bg-white/5 rounded-lg" />
+                          <div className="w-full h-6 bg-white/5 rounded-lg" />
+                          <div className="w-2/3 h-6 bg-white/5 rounded-lg" />
+                        </div>
+                      </div>
+                      <div className="col-span-9 h-full flex flex-col gap-10">
+                        <div className="grid grid-cols-3 gap-6">
+                          <div className="h-40 bg-white/5 rounded-3xl" />
+                          <div className="h-40 bg-white/5 rounded-3xl" />
+                          <div className="h-40 bg-white/5 rounded-3xl" />
+                        </div>
+                        <div className="flex-1 w-full bg-white/5 rounded-[2.5rem]" />
+                      </div>
+                    </div>
+                  </div>
+                  {/* Floating Agent UI Element */}
+                  <motion.div 
+                    animate={{ y: [0, -20, 0] }}
+                    transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                    className="absolute top-20 right-20 p-6 rounded-2xl bg-emerald-600 border border-white/20 shadow-2xl z-20 flex items-center gap-4"
+                  >
+                    <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
+                      <Activity className="w-6 h-6 text-white" />
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-black uppercase tracking-widest text-white/50 mb-1">Agent Status</div>
+                      <div className="text-sm font-black">Executing Payment $12,400.00</div>
+                    </div>
+                  </motion.div>
+                </div>
+              </motion.div>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* Footer */}
-      <footer className="py-12 text-center text-white/40">
-        <p>© 2026 AFOS, Inc. All rights reserved.</p>
-      </footer>
+        {/* Neural Pipeline Section */}
+        <section className="py-32 px-6">
+          <div className="max-w-7xl mx-auto">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+              {[
+                { step: "01", title: "Ingest", desc: "PDFs, APIs, and Webhooks are ingested into the neural stream.", icon: <Globe className="w-6 h-6" /> },
+                { step: "02", title: "Verify", desc: "Autonomous agents validate against OPA compliance rules.", icon: <Shield className="w-6 h-6" /> },
+                { step: "03", title: "Execute", desc: "Multi-rail settlement across Stripe, ACH, and Cards.", icon: <Zap className="w-6 h-6" /> },
+                { step: "04", title: "Audit", desc: "Every transaction is logged in an immutable vector ledger.", icon: <BarChart3 className="w-6 h-6" /> }
+              ].map((item, i) => (
+                <motion.div 
+                  key={i}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.1 }}
+                  viewport={{ once: true }}
+                  className="p-8 rounded-3xl bg-white/[0.02] border border-white/5 hover:border-emerald-500/30 transition-colors group"
+                >
+                  <div className="flex items-center justify-between mb-8">
+                    <div className="w-12 h-12 rounded-xl bg-emerald-600/10 flex items-center justify-center text-emerald-500 group-hover:bg-emerald-600 group-hover:text-white transition-all">
+                      {item.icon}
+                    </div>
+                    <span className="text-3xl font-black opacity-10 italic">{item.step}</span>
+                  </div>
+                  <h4 className="text-xl font-black uppercase tracking-tighter mb-4">{item.title}</h4>
+                  <p className="text-sm text-white/30 font-medium leading-relaxed">{item.desc}</p>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* Features Bento */}
+        <section id="features" className="py-64 px-6 relative">
+          <div className="max-w-7xl mx-auto">
+            <motion.div 
+              initial={{ opacity: 0, x: -50 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.8 }}
+              viewport={{ once: true, margin: "-100px" }}
+              className="mb-24 text-left"
+            >
+              <h2 className="text-6xl md:text-8xl font-black tracking-tighter mb-8 leading-[0.8]">
+                DESIGNED FOR <br />
+                <span className="text-white/20">TOTAL CONTROL.</span>
+              </h2>
+            </motion.div>
+
+            <div className="grid grid-cols-1 md:grid-cols-6 md:grid-rows-2 gap-6 h-full md:h-[900px]">
+              <motion.div 
+                initial={{ opacity: 0, y: 50 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.1 }}
+                viewport={{ once: true }}
+                whileHover={{ y: -10 }}
+                className="md:col-span-3 md:row-span-2 p-12 rounded-[3.5rem] bg-gradient-to-br from-emerald-950/30 to-[#010314] border border-white/5 group relative overflow-hidden flex flex-col justify-between"
+              >
+                <div className="relative z-10 text-left">
+                  <div className="w-16 h-16 rounded-2xl bg-emerald-600 flex items-center justify-center mb-10">
+                    <Cpu className="w-8 h-8" />
+                  </div>
+                  <h3 className="text-5xl font-black tracking-tighter mb-8 leading-tight text-white">AUTONOMOUS<br />LEDGER EXECUTION</h3>
+                  <p className="text-xl text-white/40 leading-relaxed max-w-md font-bold">Agents that resolve, verify, and settle payments with machine precision.</p>
+                </div>
+              </motion.div>
+
+              <motion.div 
+                initial={{ opacity: 0, x: 50 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.6, delay: 0.2 }}
+                viewport={{ once: true }}
+                whileHover={{ y: -10 }}
+                className="md:col-span-3 p-12 rounded-[3.5rem] bg-white/5 border border-white/5 flex flex-col justify-between relative overflow-hidden group"
+              >
+                <div className="flex items-center justify-between">
+                  <Terminal className="w-12 h-12 text-lime-400" />
+                  <div className="text-[10px] font-black tracking-widest text-white/20 uppercase">Module: 02.A</div>
+                </div>
+                <h3 className="text-3xl font-black mb-4 tracking-tighter uppercase text-left">Deterministic Cashflow</h3>
+                <p className="text-[10px] text-white/20 font-black uppercase tracking-widest">Real-time burn forecasting with zero-drift accuracy.</p>
+              </motion.div>
+
+              <motion.div 
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.3 }}
+                viewport={{ once: true }}
+                whileHover={{ y: -10 }}
+                className="md:col-span-2 p-10 rounded-[3.5rem] bg-white text-black flex flex-col justify-between"
+              >
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-black animate-pulse" />
+                  <span className="text-[10px] font-black uppercase tracking-widest opacity-40">Live Protocol</span>
+                </div>
+                <h3 className="text-2xl font-black uppercase tracking-tighter text-left">ZERO-CLICK INVOICING</h3>
+                <p className="text-xs font-bold leading-tight opacity-60">Upload a PDF. AFOS OCRs, verifies, and pays. All in 12ms.</p>
+              </motion.div>
+
+              <motion.div 
+                whileHover={{ y: -10 }}
+                className="md:col-span-1 p-10 rounded-[3.5rem] bg-emerald-600 flex flex-col items-center justify-center group"
+              >
+                <div className="text-[10px] font-black uppercase tracking-widest text-white/40 mb-4">Multi-Rail</div>
+                <Layers className="w-16 h-16 group-hover:rotate-90 transition-transform duration-500 mb-4" />
+                <span className="text-[10px] font-black uppercase text-center leading-tight text-white/80">Stripe / ACH / Card</span>
+              </motion.div>
+            </div>
+          </div>
+        </section>
+
+        {/* Aggressive Statement Section */}
+        <section className="py-80 px-6 bg-white text-black relative overflow-hidden">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.8 }}
+            whileInView={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 1, ease: "circOut" }}
+            viewport={{ once: true }}
+            className="max-w-6xl mx-auto text-center relative z-10"
+          >
+            <h2 className="text-6xl md:text-[8rem] font-black tracking-tighter leading-[0.8] mb-20 text-emerald-600 uppercase">
+              FINANCE <br />
+              <span className="text-black">AT THE</span> <br />
+              SPEED OF CODE.
+            </h2>
+            <div className="flex flex-col items-center gap-12">
+              <p className="text-2xl md:text-3xl font-black max-w-3xl opacity-50 uppercase tracking-tighter leading-tight">
+                Legacy ERPs are just slow databases. AFOS is an active execution engine for your balance sheet. 
+                Eliminate manual latency and move from record-keeping to autonomous orchestration.
+              </p>
+              <MagneticWrapper>
+                <Link 
+                  href="/auth/signin"
+                  className="inline-flex items-center gap-6 px-16 py-8 bg-black text-white text-3xl font-black rounded-3xl hover:scale-105 transition-transform shadow-2xl uppercase tracking-tighter"
+                >
+                  UPGRADE TO AFOS
+                  <ArrowRight className="w-10 h-10" />
+                </Link>
+              </MagneticWrapper>
+            </div>
+          </motion.div>
+        </section>
+
+        {/* AI Assistant Section */}
+        <section className="py-64 px-6 relative overflow-hidden">
+          <div className="absolute inset-0 bg-emerald-600/5 blur-[120px] rounded-full translate-y-1/2 opacity-20" />
+          <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center gap-24">
+            <motion.div 
+              initial={{ opacity: 0, x: -50 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              className="flex-1 text-left"
+            >
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 text-[10px] font-black uppercase tracking-widest mb-8">
+                <Bot className="w-3.5 h-3.5" />
+                Intelligence Core
+              </div>
+              <h2 className="text-5xl md:text-7xl font-black tracking-tighter mb-8 leading-tight">
+                CONVERSE WITH <br />
+                <span className="text-emerald-600">YOUR CAPITAL.</span>
+              </h2>
+              <p className="text-xl text-white/30 font-bold mb-12 max-w-lg leading-relaxed">
+                Query your entire financial graph through a single, unified interface. 
+                Powered by a swarm of specialist agents that track trends, audit logs, and answer complex treasury questions in seconds.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-12">
+                {[
+                  { title: "Multi-Agent Swarm", desc: "Specialists for tax, burn, and risk." },
+                  { title: "Historical Context", desc: "Full memory of every transaction." }
+                ].map((item, i) => (
+                  <div key={i} className="flex flex-col gap-2">
+                    <div className="text-emerald-500 font-black uppercase text-xs tracking-widest">{item.title}</div>
+                    <p className="text-sm text-white/20 font-bold">{item.desc}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="relative z-20">
+                <MagneticWrapper>
+                  <Link 
+                    href="/dashboard"
+                    className="inline-flex items-center gap-3 px-10 py-5 bg-white text-black rounded-2xl font-black hover:scale-105 transition-all shadow-2xl cursor-pointer group"
+                  >
+                    Enter AI Core
+                    <ArrowRight className="w-5 h-5 group-hover:translate-x-2 transition-transform" />
+                  </Link>
+                </MagneticWrapper>
+              </div>
+            </motion.div>
+
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, rotateY: 20 }}
+              whileInView={{ opacity: 1, scale: 1, rotateY: 0 }}
+              viewport={{ once: true }}
+              className="flex-1 w-full max-w-xl aspect-square bg-[#050810] rounded-[3rem] border border-white/10 p-1 relative shadow-2xl"
+            >
+              <div className="w-full h-full bg-[#010314] rounded-[2.8rem] overflow-hidden flex flex-col">
+                <div className="p-8 border-b border-white/5 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-emerald-600 flex items-center justify-center">
+                      <Sparkles className="w-4 h-4 text-white" />
+                    </div>
+                    <span className="text-xs font-black uppercase tracking-widest text-white/40">AFOS Assistant</span>
+                  </div>
+                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                </div>
+                <div className="flex-1 p-8 space-y-6">
+                  <div className="max-w-[80%] p-4 rounded-2xl bg-white/5 border border-white/5 text-[10px] font-bold text-white/40 italic">
+                    How much was our cloud spend in April?
+                  </div>
+                  <div className="max-w-[90%] p-5 rounded-2xl bg-emerald-600 text-white text-xs font-bold shadow-xl">
+                    Our multi-agent audit shows $14,282.40 across AWS and Vercel. 
+                    This is a 12% decrease from March. Would you like a breakdown?
+                  </div>
+                </div>
+                <div className="p-8 border-t border-white/5 flex gap-4">
+                  <div className="flex-1 h-12 bg-white/5 rounded-xl border border-white/5" />
+                  <div className="w-12 h-12 bg-emerald-600 rounded-xl flex items-center justify-center">
+                    <Send className="w-4 h-4" />
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </section>
+
+        {/* Footer */}
+        <footer className="py-32 px-6 border-t border-white/5 bg-[#010314]">
+          <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start gap-20">
+            <div className="max-w-lg text-left">
+              <div className="flex items-center gap-3 mb-10">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-600 flex items-center justify-center">
+                  <Zap className="w-7 h-7 text-white" />
+                </div>
+                <span className="text-4xl font-black tracking-tighter uppercase text-white">AFOS</span>
+              </div>
+              <p className="text-2xl text-white/20 font-black tracking-tight leading-snug">The world&apos;s first emerald-grade financial OS.</p>
+            </div>
+          </div>
+          <div className="max-w-7xl mx-auto mt-40 pt-12 border-t border-white/5 flex justify-between items-center text-[10px] font-black tracking-widest text-white/10 uppercase">
+            <span>© 2026 AFOS INC.</span>
+            <span>EMERALD CORE PROTOCOL</span>
+          </div>
+        </footer>
+      </main>
     </div>
   );
 }

@@ -47,6 +47,47 @@
   --shadow-glow-blue: 0 0 30px rgba(59, 130, 246, 0.15);
   --shadow-glow-emerald: 0 0 30px rgba(16, 185, 129, 0.15);
   --shadow-elevated: 0 8px 48px rgba(0, 0, 0, 0.6);
+
+  /* Startup Flair - Midnight Emerald Theme */
+  --color-brand: #10b981;
+  --color-brand-glow: rgba(16, 185, 129, 0.4);
+  --color-accent-lime: #84cc16;
+}
+
+.bg-grid {
+  background-size: 40px 40px;
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+}
+
+.bg-dot {
+  background-size: 20px 20px;
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+}
+
+.noise {
+  background-image: url("https://grainy-gradients.vercel.app/noise.svg");
+  filter: contrast(150%) brightness(1000%);
+  opacity: 0.05;
+}
+
+.shiny-text {
+  background: linear-gradient(to right,
+      var(--color-text-primary) 20%,
+      var(--color-accent-blue) 40%,
+      var(--color-accent-violet) 60%,
+      var(--color-text-primary) 80%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shine 4s linear infinite;
+}
+
+@keyframes shine {
+  to {
+    background-position: 200% center;
+  }
 }
 
 /* ===== BASE STYLES ===== */
@@ -72,13 +113,16 @@ body {
   width: 6px;
   height: 6px;
 }
+
 ::-webkit-scrollbar-track {
   background: var(--color-bg-secondary);
 }
+
 ::-webkit-scrollbar-thumb {
   background: var(--color-border-hover);
   border-radius: 3px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-text-muted);
 }
@@ -174,9 +218,17 @@ body {
 
 /* ===== ANIMATED GRADIENT ===== */
 @keyframes gradient-shift {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
+  0% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0% 50%;
+  }
 }
 
 .animated-gradient {
@@ -187,34 +239,107 @@ body {
 
 /* ===== PULSE ANIMATIONS ===== */
 @keyframes pulse-blue {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
-  50% { box-shadow: 0 0 0 8px rgba(59, 130, 246, 0); }
+
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4);
+  }
+
+  50% {
+    box-shadow: 0 0 0 8px rgba(59, 130, 246, 0);
+  }
 }
 
 @keyframes pulse-emerald {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
-  50% { box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }
+
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+  }
+
+  50% {
+    box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
+  }
 }
 
 @keyframes pulse-rose {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.4); }
-  50% { box-shadow: 0 0 0 8px rgba(244, 63, 94, 0); }
+
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.4);
+  }
+
+  50% {
+    box-shadow: 0 0 0 8px rgba(244, 63, 94, 0);
+  }
 }
 
-.pulse-blue { animation: pulse-blue 2s infinite; }
-.pulse-emerald { animation: pulse-emerald 2s infinite; }
-.pulse-rose { animation: pulse-rose 2s infinite; }
+.pulse-blue {
+  animation: pulse-blue 2s infinite;
+}
+
+.pulse-emerald {
+  animation: pulse-emerald 2s infinite;
+}
+
+.pulse-rose {
+  animation: pulse-rose 2s infinite;
+}
+
+/* ===== BORDER GLOW ANIMATION ===== */
+@keyframes border-glow {
+
+  0%,
+  100% {
+    border-color: rgba(99, 102, 241, 0.2);
+  }
+
+  50% {
+    border-color: rgba(99, 102, 241, 0.6);
+  }
+}
+
+.animate-border-glow {
+  animation: border-glow 3s ease-in-out infinite;
+}
+
+/* ===== TEXT REVEAL ===== */
+.text-reveal {
+  background: linear-gradient(to right, white, white) no-repeat;
+  background-size: 0% 100%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.1);
+  transition: background-size 0.8s cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+.text-reveal.active {
+  background-size: 100% 100%;
+}
 
 /* ===== FLOATING ANIMATION ===== */
 @keyframes float {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-6px); }
+
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-6px);
+  }
 }
 
 /* ===== AGENT ACTIVITY ===== */
 @keyframes agent-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.3;
+  }
 }
 
 .agent-active {
@@ -256,10 +381,21 @@ body {
 }
 
 /* ===== RISK INDICATORS ===== */
-.risk-low { color: #10b981; }
-.risk-medium { color: #f59e0b; }
-.risk-high { color: #f97316; }
-.risk-critical { color: #f43f5e; }
+.risk-low {
+  color: #10b981;
+}
+
+.risk-medium {
+  color: #f59e0b;
+}
+
+.risk-high {
+  color: #f97316;
+}
+
+.risk-critical {
+  color: #f43f5e;
+}
 
 /* ===== GLOW EFFECTS ===== */
 .glow-text-blue {
@@ -334,23 +470,27 @@ body {
 }
 
 /* ===== CODE / MONO ===== */
-code, .font-mono {
+code,
+.font-mono {
   font-family: 'JetBrains Mono', 'Fira Code', monospace;
 }
 
 /* ===== LOADING SHIMMER ===== */
 @keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
 }
 
 .shimmer {
-  background: linear-gradient(
-    90deg,
-    var(--color-bg-card) 25%,
-    var(--color-bg-hover) 50%,
-    var(--color-bg-card) 75%
-  );
+  background: linear-gradient(90deg,
+      var(--color-bg-card) 25%,
+      var(--color-bg-hover) 50%,
+      var(--color-bg-card) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }
