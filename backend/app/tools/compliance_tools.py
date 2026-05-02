@@ -89,44 +89,52 @@ async def evaluate_policy_rules(
     is_international: bool = False,
 ) -> dict:
     """
-    Evaluate a transaction against built-in financial policy rules.
-    Returns policy violations, required approvals, and risk assessment.
+    Evaluate a transaction against distributed Open Policy Agent (OPA) rules.
+    Always use this to check OPA rules.
     Use for: 'will this payment be blocked?', 'what policies apply?', 'check compliance'.
     """
-    violations = []
-
-    # POL-001: High-value threshold
-    if amount > 10000:
-        violations.append({"policy_id": "POL-001", "name": "High-Value Approval", "reason": f"Amount {currency} {amount:,.0f} exceeds $10,000 threshold", "severity": "high", "action": "require_cfo_approval"})
-
-    # POL-002: Unknown vendor
-    if vendor_risk_score > 70 and not vendor_verified:
-        violations.append({"policy_id": "POL-002", "name": "Unknown Vendor Block", "reason": f"Unverified vendor with risk score {vendor_risk_score:.0f} > 70", "severity": "high", "action": "require_review"})
-
-    # POL-003: Spend spike (simplified)
-    if amount > 50000:
-        violations.append({"policy_id": "POL-003", "name": "Spend Spike Alert", "reason": f"Transaction {currency} {amount:,.0f} may exceed category average by 3x", "severity": "medium", "action": "alert_and_review"})
-
-    # POL-004: Duplicate payment
-    if is_duplicate:
-        violations.append({"policy_id": "POL-004", "name": "Duplicate Payment Block", "reason": "Duplicate invoice detected — auto-blocked", "severity": "critical", "action": "block"})
-
-    # POL-005: International
-    if is_international and amount > 5000:
-        violations.append({"policy_id": "POL-005", "name": "International Payment Review", "reason": f"Cross-border payment {currency} {amount:,.0f} > $5,000", "severity": "medium", "action": "require_approval"})
-
-    auto_approve = amount < 1000 and vendor_verified and vendor_risk_score < 30 and not is_duplicate
-    approval_level = "auto" if auto_approve else "cfo" if amount > 50000 else "director" if amount > 10000 else "manager"
-
-    return {
-        "compliant": len(violations) == 0,
-        "violations_count": len(violations),
-        "violations": violations,
-        "auto_approve": auto_approve,
-        "required_approval_level": approval_level,
-        "sla_hours": 4 if violations else 24,
-        "risk_score": min(len(violations) * 25, 100),
+    import httpx
+    
+    opa_url = "http://localhost:8181/v1/data/finance/evaluate"
+    
+    input_data = {
+        "input": {
+            "amount": amount,
+            "currency": currency,
+            "vendor": {
+                "verified": vendor_verified,
+                "risk_score": vendor_risk_score
+            },
+            "is_duplicate": is_duplicate,
+            "is_international": is_international
+        }
     }
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(opa_url, json=input_data)
+            
+            if response.status_code == 200:
+                result = response.json().get("result", {})
+                
+                # Format OPA output to match the expected schema back down to the agent
+                violations = result.get("violations", [])
+                is_compliant = result.get("allow", False) and len(violations) == 0
+                
+                return {
+                    "compliant": is_compliant,
+                    "violations_count": len(violations),
+                    "violations": violations,
+                    "auto_approve": result.get("allow", False) and amount < 5000, 
+                    "required_approval_level": result.get("required_approval", "manager"),
+                    "sla_hours": 4 if violations else 24,
+                    "risk_score": min(len(violations) * 25, 100),
+                }
+            else:
+                return {"error": f"OPA returned {response.status_code}: {response.text}"}
+                
+    except Exception as e:
+        return {"error": f"Failed to connect to OPA: {str(e)}"}
 
 
 @tool("get_high_risk_items", args_schema=RiskItemsInput)
