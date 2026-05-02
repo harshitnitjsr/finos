@@ -38,7 +38,8 @@ async def get_pending_approvals(status: Optional[str] = "pending", limit: int = 
     from app.core.database import AsyncSessionLocal
     from app.models.models import Approval, Invoice, Vendor
     from sqlalchemy import select, desc
-    ORG_ID = "org_demo_001"
+    from app.core.context import org_id_var
+    ORG_ID = org_id_var.get()
 
     async with AsyncSessionLocal() as db:
         q = (
@@ -147,7 +148,8 @@ async def get_high_risk_items(risk_level: Optional[str] = "high", include_invoic
     from app.core.database import AsyncSessionLocal
     from app.models.models import Invoice, Expense
     from sqlalchemy import select, desc
-    ORG_ID = "org_demo_001"
+    from app.core.context import org_id_var
+    ORG_ID = org_id_var.get()
 
     valid_levels = {"medium": ["medium", "high", "critical"], "high": ["high", "critical"], "critical": ["critical"]}
     levels = valid_levels.get(risk_level or "high", ["high", "critical"])

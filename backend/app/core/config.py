@@ -33,10 +33,13 @@ class Settings(BaseSettings):
     MODEL_ROUTER_FORECAST: str = "gpt-4o"
     MODEL_ROUTER_COMPLIANCE: str = "gpt-4o"
     
-    # Auth
-    CLERK_SECRET_KEY: str = ""
-    CLERK_PUBLISHABLE_KEY: str = ""
+    # Auth — internal proxy secret (must match BACKEND_API_SECRET in Next.js .env.local)
+    # Generate with: python -c "import secrets; print(secrets.token_hex(32))"
+    BACKEND_API_SECRET: str = "change_me_in_production"
     APP_SECRET_KEY: str = "change_me_in_production"
+
+    # Allowed origin for CORS (Next.js frontend)
+    NEXTJS_ORIGIN: str = "http://localhost:3000"
     
     # App
     ENVIRONMENT: str = "development"

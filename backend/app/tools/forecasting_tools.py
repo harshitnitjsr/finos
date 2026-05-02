@@ -37,7 +37,8 @@ async def get_historical_spend_data(months: int = 6, group_by: str = "month") ->
     from app.core.database import AsyncSessionLocal
     from app.models.models import Expense
     from sqlalchemy import select, func, text
-    ORG_ID = "org_demo_001"
+    from app.core.context import org_id_var
+    ORG_ID = org_id_var.get()
 
     async with AsyncSessionLocal() as db:
         since = datetime.utcnow() - timedelta(days=months * 31)
@@ -80,7 +81,8 @@ async def analyze_category_trend(category: str, months: int = 6) -> dict:
     from app.core.database import AsyncSessionLocal
     from app.models.models import Expense
     from sqlalchemy import select, func, text
-    ORG_ID = "org_demo_001"
+    from app.core.context import org_id_var
+    ORG_ID = org_id_var.get()
 
     async with AsyncSessionLocal() as db:
         since = datetime.utcnow() - timedelta(days=months * 31)
@@ -123,7 +125,8 @@ async def get_financial_dashboard_snapshot(days: int = 30) -> dict:
     from app.core.database import AsyncSessionLocal
     from app.models.models import Expense, Invoice, Approval, Vendor
     from sqlalchemy import select, func
-    ORG_ID = "org_demo_001"
+    from app.core.context import org_id_var
+    ORG_ID = org_id_var.get()
 
     async with AsyncSessionLocal() as db:
         since = datetime.utcnow() - timedelta(days=days)
@@ -174,7 +177,8 @@ async def get_agent_activity_logs(hours: int = 24, limit: int = 50) -> dict:
     from app.core.database import AsyncSessionLocal
     from app.models.models import AgentLog, AgentToolLog
     from sqlalchemy import select, desc
-    ORG_ID = "org_demo_001"
+    from app.core.context import org_id_var
+    ORG_ID = org_id_var.get()
 
     async with AsyncSessionLocal() as db:
         since = datetime.utcnow() - timedelta(hours=hours)

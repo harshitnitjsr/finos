@@ -28,11 +28,14 @@ async def write_agent_log(
     output_data: Optional[dict] = None,
     confidence: float = 0.0,
     error: Optional[str] = None,
-    org_id: str = "org_demo_001",
+    org_id: Optional[str] = None,
 ) -> None:
     """Write an agent log entry to the database and update the Redis heartbeat."""
     from app.core.database import AsyncSessionLocal
     from app.models.models import AgentLog
+    from app.core.context import org_id_var
+    
+    org_id = org_id or org_id_var.get()
 
     try:
         async with AsyncSessionLocal() as db:
@@ -82,12 +85,14 @@ class AgentTimer:
         agent_id: str,
         agent_name: str,
         action: str,
-        org_id: str = "org_demo_001",
+        org_id: Optional[str] = None,
     ):
+        from app.core.context import org_id_var
+        
         self.agent_id = agent_id
         self.agent_name = agent_name
         self.action = action
-        self.org_id = org_id
+        self.org_id = org_id or org_id_var.get()
         self._start: float = 0
         self.model_used: Optional[str] = None
         self.tokens_used: int = 0

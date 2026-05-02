@@ -46,29 +46,19 @@ CURRENCIES = ["USD", "USD", "USD", "USD", "INR", "EUR", "GBP"]
 async def seed_demo_data():
     """Seed the database with realistic demo data, then index into Qdrant."""
     async with AsyncSessionLocal() as db:
-        # Check if already seeded
-        result = await db.execute(select(Organization).limit(1))
+        # Check if already seeded for this org
+        result = await db.execute(select(Vendor).where(Vendor.org_id == "cc95cadf-ba95-474f-929e-b77f8b0b934c").limit(1))
         if result.scalar_one_or_none():
-            logger.info("Demo data already seeded, skipping")
+            logger.info("Demo data already seeded for user org, skipping")
             return
 
-        logger.info("Seeding demo data...")
-
-        # Create org
-        org = Organization(
-            id="org_demo_001",
-            name="Acme Technologies",
-            slug="acme-tech",
-            default_currency="USD",
-        )
-        db.add(org)
-        await db.flush()
+        logger.info("Seeding demo data for user org...")
 
         # Create vendors
         vendors = []
         for vd in VENDORS_DATA:
             vendor = Vendor(
-                org_id="org_demo_001",
+                org_id="cc95cadf-ba95-474f-929e-b77f8b0b934c",
                 name=vd["name"],
                 category=vd["category"],
                 risk_level=vd["risk_level"],
@@ -97,7 +87,7 @@ async def seed_demo_data():
             risk_level = "high" if amount > 50000 else "medium" if amount > 10000 else "low"
 
             inv = Invoice(
-                org_id="org_demo_001",
+                org_id="cc95cadf-ba95-474f-929e-b77f8b0b934c",
                 vendor_id=vendor.id,
                 invoice_number=f"INV-{2024100 + i}",
                 status=status,
@@ -136,7 +126,7 @@ async def seed_demo_data():
             vendor_name = random.choice(VENDORS_DATA)["name"]
 
             exp = Expense(
-                org_id="org_demo_001",
+                org_id="cc95cadf-ba95-474f-929e-b77f8b0b934c",
                 description=f"{cat} - {vendor_name}",
                 amount=round(amount, 2),
                 currency=currency,
@@ -157,7 +147,7 @@ async def seed_demo_data():
         for i, inv in enumerate(invoices[:6]):
             status = "pending" if i < 3 else "approved"
             approval = Approval(
-                org_id="org_demo_001",
+                org_id="cc95cadf-ba95-474f-929e-b77f8b0b934c",
                 invoice_id=inv.id,
                 status=status,
                 requested_by="finance@acme.com",
@@ -197,7 +187,7 @@ async def seed_demo_data():
             sstates = steps_statuses.get(wstatus, ["pending"] * 4)
 
             wf = Workflow(
-                org_id="org_demo_001",
+                org_id="cc95cadf-ba95-474f-929e-b77f8b0b934c",
                 name=name,
                 workflow_type=wtype,
                 status=wstatus,
@@ -208,7 +198,7 @@ async def seed_demo_data():
                 current_step=2 if wstatus in ("running", "failed") else (4 if wstatus == "completed" else 0),
                 retry_count=1 if wstatus == "failed" else 0,
                 error="Timeout waiting for approval response (48h SLA exceeded)" if wstatus == "failed" else None,
-                context={"org_id": "org_demo_001", "progress": progress},
+                context={"org_id": "cc95cadf-ba95-474f-929e-b77f8b0b934c", "progress": progress},
                 started_at=datetime.utcnow() - timedelta(minutes=random.randint(5, 120)),
             )
             db.add(wf)
@@ -227,7 +217,7 @@ async def _index_vendors_into_qdrant():
         from app.core.model_router import model_router
 
         async with AsyncSessionLocal() as db:
-            result = await db.execute(select(Vendor).where(Vendor.org_id == "org_demo_001"))
+            result = await db.execute(select(Vendor).where(Vendor.org_id == "cc95cadf-ba95-474f-929e-b77f8b0b934c"))
             vendors = result.scalars().all()
 
         logger.info(f"Indexing {len(vendors)} vendors into Qdrant...")

@@ -1,86 +1,273 @@
 "use client";
+import { useSession, signOut } from "next-auth/react";
+import { useState } from "react";
 import { motion } from "framer-motion";
-import { Settings as SettingsIcon, Shield, CreditCard, Building, Users, Bell } from "lucide-react";
-import { UserProfile } from "@clerk/nextjs";
+import {
+  Settings as SettingsIcon, Shield, Building, Bell,
+  LogOut, Save, Loader2, CheckCircle2, User, Mail,
+  Globe, Calendar, DollarSign,
+} from "lucide-react";
+import toast from "react-hot-toast";
 
-const containerVariants = { hidden:{opacity:0}, show:{opacity:1,transition:{staggerChildren:0.06}} };
-const itemVariants = { hidden:{opacity:0,y:16}, show:{opacity:1,y:0,transition:{duration:0.35}} };
+const cv = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.06 } } };
+const iv = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.35 } } };
+
+type Tab = "profile" | "organisation" | "notifications";
+
+const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
+  { id: "profile", label: "Profile & Security", icon: Shield },
+  { id: "organisation", label: "Organisation", icon: Building },
+  { id: "notifications", label: "Notifications", icon: Bell },
+];
+
+/* ── Profile Tab ─────────────────────────────────────────────────────────── */
+
+function ProfileTab() {
+  const { data: session } = useSession();
+  const user = session?.user;
+
+  return (
+    <div className="p-6 space-y-6">
+      {/* Avatar + name */}
+      <div className="flex items-center gap-4 p-4 rounded-xl" style={{ background: "var(--color-bg-elevated)", border: "1px solid var(--color-border)" }}>
+        {user?.image ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={user.image} alt={user.name ?? ""} className="w-16 h-16 rounded-full ring-2 ring-blue-500/30" />
+        ) : (
+          <div className="w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold text-white" style={{ background: "linear-gradient(135deg, #4f46e5, #7c3aed)" }}>
+            {user?.name?.[0] ?? "?"}
+          </div>
+        )}
+        <div>
+          <p className="text-lg font-bold text-white">{user?.name ?? "—"}</p>
+          <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>Google Account</p>
+        </div>
+      </div>
+
+      {/* Info rows */}
+      <div className="space-y-3">
+        {[
+          { icon: User, label: "Full Name", value: user?.name ?? "—" },
+          { icon: Mail, label: "Email", value: user?.email ?? "—" },
+          { icon: Shield, label: "Role", value: user?.role ?? "owner" },
+          { icon: Building, label: "Organisation ID", value: user?.orgId ? `${user.orgId.slice(0, 8)}…` : "—" },
+        ].map(({ icon: Icon, label, value }) => (
+          <div key={label} className="flex items-center justify-between p-3 rounded-xl" style={{ background: "var(--color-bg-elevated)", border: "1px solid var(--color-border)" }}>
+            <div className="flex items-center gap-2">
+              <Icon size={14} style={{ color: "var(--color-text-muted)" }} />
+              <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>{label}</span>
+            </div>
+            <span className="text-sm font-medium text-white">{value}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Auth provider note */}
+      <div className="p-4 rounded-xl" style={{ background: "rgba(59,130,246,0.06)", border: "1px solid rgba(59,130,246,0.15)" }}>
+        <p className="text-xs text-blue-400 font-medium mb-1">Authentication</p>
+        <p className="text-xs" style={{ color: "var(--color-text-secondary)" }}>
+          Your account is managed via <strong className="text-white">Google OAuth</strong>. To change your name or profile photo, update your Google account directly.
+        </p>
+      </div>
+
+      {/* Sign out */}
+      <button
+        id="settings-signout-btn"
+        onClick={() => signOut({ callbackUrl: "/auth/signin" })}
+        className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all hover:opacity-90"
+        style={{ background: "rgba(244,63,94,0.1)", color: "#f43f5e", border: "1px solid rgba(244,63,94,0.2)" }}
+      >
+        <LogOut size={14} /> Sign Out
+      </button>
+    </div>
+  );
+}
+
+/* ── Organisation Tab ────────────────────────────────────────────────────── */
+
+const CURRENCIES = ["USD", "EUR", "GBP", "INR", "JPY", "AUD", "CAD"];
+const MONTHS = ["January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"];
+
+function OrganisationTab() {
+  const { data: session, update } = useSession();
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [orgName, setOrgName] = useState(session?.user?.orgName ?? "");
+  const [currency, setCurrency] = useState("USD");
+  const [fiscalMonth, setFiscalMonth] = useState(1);
+
+  const handleSave = async () => {
+    if (!orgName.trim()) { toast.error("Organisation name cannot be empty"); return; }
+    setSaving(true);
+    try {
+      const res = await fetch("/api/onboarding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orgName, defaultCurrency: currency, fiscalYearStart: fiscalMonth }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error ?? "Save failed");
+      const data = await res.json();
+      await update({ orgId: data.orgId, orgName: data.orgName, onboardingComplete: true });
+      setSaved(true);
+      toast.success("Organisation updated");
+      setTimeout(() => setSaved(false), 3000);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Something went wrong");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="p-6 space-y-5">
+      <div>
+        <label className="block text-xs font-semibold mb-1.5" style={{ color: "var(--color-text-muted)" }}>
+          <Building size={12} className="inline mr-1" />Organisation Name
+        </label>
+        <input
+          id="settings-org-name"
+          value={orgName}
+          onChange={e => setOrgName(e.target.value)}
+          className="w-full px-4 py-2.5 rounded-xl text-sm text-white outline-none transition-all"
+          style={{ background: "var(--color-bg-elevated)", border: "1px solid var(--color-border)" }}
+          placeholder="Acme Corp"
+        />
+      </div>
+
+      <div>
+        <label className="block text-xs font-semibold mb-1.5" style={{ color: "var(--color-text-muted)" }}>
+          <DollarSign size={12} className="inline mr-1" />Default Currency
+        </label>
+        <select
+          id="settings-currency"
+          value={currency}
+          onChange={e => setCurrency(e.target.value)}
+          className="w-full px-4 py-2.5 rounded-xl text-sm text-white outline-none appearance-none"
+          style={{ background: "var(--color-bg-elevated)", border: "1px solid var(--color-border)" }}
+        >
+          {CURRENCIES.map(c => <option key={c} value={c} style={{ background: "#0d1424" }}>{c}</option>)}
+        </select>
+      </div>
+
+      <div>
+        <label className="block text-xs font-semibold mb-1.5" style={{ color: "var(--color-text-muted)" }}>
+          <Calendar size={12} className="inline mr-1" />Fiscal Year Start
+        </label>
+        <select
+          id="settings-fiscal"
+          value={fiscalMonth}
+          onChange={e => setFiscalMonth(Number(e.target.value))}
+          className="w-full px-4 py-2.5 rounded-xl text-sm text-white outline-none appearance-none"
+          style={{ background: "var(--color-bg-elevated)", border: "1px solid var(--color-border)" }}
+        >
+          {MONTHS.map((m, i) => <option key={m} value={i + 1} style={{ background: "#0d1424" }}>{m}</option>)}
+        </select>
+      </div>
+
+      <div className="p-3 rounded-xl text-xs" style={{ background: "rgba(59,130,246,0.06)", border: "1px solid rgba(59,130,246,0.15)", color: "var(--color-text-secondary)" }}>
+        <Globe size={12} className="inline mr-1 text-blue-400" />
+        Organisation ID: <span className="font-mono text-white">{session?.user?.orgId ?? "—"}</span>
+      </div>
+
+      <button
+        id="settings-save-org"
+        onClick={handleSave}
+        disabled={saving}
+        className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-60 hover:opacity-90"
+        style={{ background: saved ? "rgba(16,185,129,0.15)" : "rgba(59,130,246,0.15)", color: saved ? "#10b981" : "#3b82f6", border: `1px solid ${saved ? "rgba(16,185,129,0.3)" : "rgba(59,130,246,0.3)"}` }}
+      >
+        {saving ? <Loader2 size={14} className="animate-spin" /> : saved ? <CheckCircle2 size={14} /> : <Save size={14} />}
+        {saving ? "Saving…" : saved ? "Saved!" : "Save Changes"}
+      </button>
+    </div>
+  );
+}
+
+/* ── Notifications Tab ───────────────────────────────────────────────────── */
+
+function NotificationsTab() {
+  const [settings, setSettings] = useState({
+    approvalRequired: true,
+    anomalyDetected: true,
+    workflowFailed: true,
+    invoiceUploaded: false,
+    weeklyDigest: true,
+  });
+
+  const labels: Record<string, string> = {
+    approvalRequired: "Approval required",
+    anomalyDetected: "Anomaly detected",
+    workflowFailed: "Workflow failed",
+    invoiceUploaded: "Invoice uploaded",
+    weeklyDigest: "Weekly digest email",
+  };
+
+  return (
+    <div className="p-6 space-y-3">
+      <p className="text-xs font-semibold mb-4" style={{ color: "var(--color-text-muted)" }}>Email notifications</p>
+      {Object.entries(settings).map(([key, enabled]) => (
+        <div key={key} className="flex items-center justify-between p-3 rounded-xl" style={{ background: "var(--color-bg-elevated)", border: "1px solid var(--color-border)" }}>
+          <span className="text-sm text-white">{labels[key]}</span>
+          <button
+            id={`notif-${key}`}
+            onClick={() => setSettings(s => ({ ...s, [key]: !s[key as keyof typeof s] }))}
+            className="w-10 h-5 rounded-full relative transition-all"
+            style={{ background: enabled ? "#3b82f6" : "rgba(255,255,255,0.1)" }}
+          >
+            <span
+              className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all"
+              style={{ left: enabled ? "calc(100% - 18px)" : "2px" }}
+            />
+          </button>
+        </div>
+      ))}
+      <p className="text-xs pt-2" style={{ color: "var(--color-text-muted)" }}>
+        Notification preferences are stored locally. Email delivery coming soon.
+      </p>
+    </div>
+  );
+}
+
+/* ── Page ────────────────────────────────────────────────────────────────── */
 
 export default function SettingsPage() {
+  const [activeTab, setActiveTab] = useState<Tab>("profile");
+
   return (
-    <motion.div variants={containerVariants} initial="hidden" animate="show" className="space-y-6 max-w-5xl mx-auto">
-      <motion.div variants={itemVariants}>
+    <motion.div variants={cv} initial="hidden" animate="show" className="space-y-6 max-w-5xl mx-auto">
+      <motion.div variants={iv}>
         <h1 className="text-2xl font-bold text-white">Settings</h1>
-        <p className="text-sm mt-1" style={{ color:"var(--color-text-secondary)" }}>Manage your account, organization, and AFOS configurations</p>
+        <p className="text-sm mt-1" style={{ color: "var(--color-text-secondary)" }}>
+          Manage your account, organisation, and preferences
+        </p>
       </motion.div>
 
       <div className="flex flex-col lg:flex-row gap-6">
-        {/* Settings Navigation */}
-        <motion.div variants={itemVariants} className="w-full lg:w-64 flex-shrink-0">
-          <div className="card p-3 space-y-1">
-            {[
-              { id:"profile", label:"Profile & Security", icon:Shield, active:true },
-              { id:"org", label:"Organization", icon:Building, active:false },
-              { id:"billing", label:"Billing & Plans", icon:CreditCard, active:false },
-              { id:"team", label:"Team Members", icon:Users, active:false },
-              { id:"notifications", label:"Notifications", icon:Bell, active:false },
-              { id:"advanced", label:"Advanced AI", icon:SettingsIcon, active:false },
-            ].map(nav => (
-              <button key={nav.id} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${nav.active ? "bg-blue-500/10 text-blue-400" : "text-slate-400 hover:text-white hover:bg-slate-800"}`}>
-                <nav.icon size={16} />
-                {nav.label}
+        {/* Sidebar nav */}
+        <motion.div variants={iv} className="w-full lg:w-56 flex-shrink-0">
+          <div className="card p-2 space-y-1">
+            {TABS.map(tab => (
+              <button
+                key={tab.id}
+                id={`settings-tab-${tab.id}`}
+                onClick={() => setActiveTab(tab.id)}
+                className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${activeTab === tab.id ? "text-blue-400" : "text-slate-400 hover:text-white"}`}
+                style={activeTab === tab.id ? { background: "rgba(59,130,246,0.1)", border: "1px solid rgba(59,130,246,0.15)" } : {}}
+              >
+                <tab.icon size={15} />
+                {tab.label}
               </button>
             ))}
           </div>
         </motion.div>
 
-        {/* Settings Content */}
-        <motion.div variants={itemVariants} className="flex-1">
-          <div className="card overflow-hidden" style={{ minHeight:600 }}>
-          {process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY &&
-          process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY !== "your_clerk_publishable_key" ? (
-            <UserProfile
-              appearance={{
-                elements: {
-                  rootBox: "w-full",
-                  card: "bg-transparent shadow-none border-0 w-full",
-                  headerTitle: "text-white text-xl font-bold",
-                  headerSubtitle: "text-slate-400",
-                  profileSectionTitle: "text-white font-semibold border-b border-slate-800 pb-2",
-                  profileSectionTitleText: "text-white",
-                  profileSectionPrimaryButton: "text-blue-400 hover:text-blue-300",
-                  formFieldInput: "bg-slate-900 border-slate-700 text-white focus:border-blue-500 rounded-lg",
-                  formButtonPrimary: "bg-blue-600 hover:bg-blue-500 font-semibold rounded-lg",
-                  badge: "bg-blue-500/10 text-blue-400 border border-blue-500/20",
-                  userPreviewMainIdentifier: "text-white font-semibold",
-                  userPreviewSecondaryIdentifier: "text-slate-400",
-                  accordionTriggerButton: "text-white hover:bg-slate-800 rounded-lg",
-                  breadcrumbsItemBox: "text-slate-400",
-                  navbar: "hidden",
-                  pageScrollBox: "p-6",
-                },
-              }}
-            />
-          ) : (
-            <div className="p-8 space-y-4">
-              <p className="text-white font-semibold text-lg">Profile & Security</p>
-              <div className="p-4 rounded-xl" style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)" }}>
-                <p className="text-amber-400 text-sm font-medium mb-1">⚠️ Clerk not configured</p>
-                <p className="text-slate-400 text-xs">
-                  Add your real <code className="text-blue-400">NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY</code> and{" "}
-                  <code className="text-blue-400">CLERK_SECRET_KEY</code> to <code className="text-slate-300">.env.local</code> to enable user profile management.
-                </p>
-              </div>
-              <div className="space-y-3 mt-4">
-                {[["Name", "Demo User"], ["Email", "demo@afos.ai"], ["Role", "Admin"], ["Organization", "Acme Technologies"]].map(([label, val]) => (
-                  <div key={label} className="flex items-center justify-between p-3 rounded-xl" style={{ background: "var(--color-bg-elevated)", border: "1px solid var(--color-border)" }}>
-                    <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>{label}</span>
-                    <span className="text-sm font-medium text-white">{val}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+        {/* Content */}
+        <motion.div variants={iv} className="flex-1">
+          <div className="card overflow-hidden" style={{ minHeight: 420 }}>
+            {activeTab === "profile" && <ProfileTab />}
+            {activeTab === "organisation" && <OrganisationTab />}
+            {activeTab === "notifications" && <NotificationsTab />}
           </div>
         </motion.div>
       </div>

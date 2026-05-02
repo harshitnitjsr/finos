@@ -3,6 +3,8 @@ AFOS — AI Financial Operating System
 FastAPI Backend — Main Application Entry Point
 """
 import asyncio
+import hmac
+import hashlib
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +12,8 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from loguru import logger
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 import os
 
 from app.core.config import settings
@@ -63,6 +67,53 @@ async def lifespan(app: FastAPI):
     logger.info("🛑 AFOS shutdown complete")
 
 
+# ── Internal proxy authentication middleware ─────────────────────────────────
+# Every request to /api/v1/* MUST carry X-Internal-Token matching
+# BACKEND_API_SECRET. This prevents direct access bypassing the Next.js proxy.
+#
+# Public routes (no token needed):
+#   GET /health
+#   GET /api/docs, /api/redoc, /openapi.json
+
+PUBLIC_PREFIXES = (
+    "/health",
+    "/api/docs",
+    "/api/redoc",
+    "/openapi.json",
+)
+
+
+class InternalAuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next) -> Response:
+        path = request.url.path
+
+        # Allow public routes through without a token
+        if any(path.startswith(p) for p in PUBLIC_PREFIXES):
+            return await call_next(request)
+
+        # Only enforce on /api/v1/* routes
+        if not path.startswith("/api/v1"):
+            return await call_next(request)
+
+        # In development mode, skip enforcement if secret is the placeholder
+        secret = settings.BACKEND_API_SECRET
+        if secret == "change_me_in_production" and settings.ENVIRONMENT == "development":
+            return await call_next(request)
+
+        # Validate the X-Internal-Token header using constant-time comparison
+        token = request.headers.get("x-internal-token", "")
+        expected = secret
+        if not hmac.compare_digest(token.encode(), expected.encode()):
+            logger.warning(f"Auth failed! Token received: {repr(token)}, Expected: {repr(expected)}")
+            logger.warning(f"Request Headers: {dict(request.headers)}")
+            return JSONResponse(
+                status_code=401,
+                content={"error": "Unauthorized — direct backend access is not allowed"},
+            )
+
+        return await call_next(request)
+
+
 app = FastAPI(
     title="AFOS — AI Financial Operating System",
     description="Autonomous Financial Operating System API",
@@ -72,15 +123,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Middleware
+# Middleware — order matters: outermost runs first on request, last on response
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],
+    # Only accept requests from the Next.js frontend origin
+    allow_origins=[settings.NEXTJS_ORIGIN],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+# InternalAuthMiddleware must be added AFTER CORS so OPTIONS preflight is allowed
+app.add_middleware(InternalAuthMiddleware)
 
 # Mount static files for uploads (auto-create if missing)
 import os as _os

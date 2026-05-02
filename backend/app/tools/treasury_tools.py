@@ -36,7 +36,8 @@ async def get_burn_rate(days: int = 30, currency: str = "USD") -> dict:
     from app.core.database import AsyncSessionLocal
     from app.models.models import Expense
     from sqlalchemy import select, func, desc
-    ORG_ID = "org_demo_001"
+    from app.core.context import org_id_var
+    ORG_ID = org_id_var.get()
 
     async with AsyncSessionLocal() as db:
         since = datetime.utcnow() - timedelta(days=days)
@@ -81,7 +82,8 @@ async def get_upcoming_payments(days_ahead: int = 30) -> dict:
     from app.core.database import AsyncSessionLocal
     from app.models.models import Invoice, Vendor
     from sqlalchemy import select, desc
-    ORG_ID = "org_demo_001"
+    from app.core.context import org_id_var
+    ORG_ID = org_id_var.get()
 
     now = datetime.utcnow()
     deadline = now + timedelta(days=days_ahead)
@@ -138,7 +140,8 @@ async def get_monthly_spend_trend(months: int = 6, currency: str = "USD") -> dic
     from app.core.database import AsyncSessionLocal
     from app.models.models import Expense
     from sqlalchemy import select, func, text
-    ORG_ID = "org_demo_001"
+    from app.core.context import org_id_var
+    ORG_ID = org_id_var.get()
 
     async with AsyncSessionLocal() as db:
         since = datetime.utcnow() - timedelta(days=months * 31)
@@ -179,7 +182,8 @@ async def calculate_runway(cash_on_hand: float = 1200000.0) -> dict:
     from app.core.database import AsyncSessionLocal
     from app.models.models import Expense
     from sqlalchemy import select, func
-    ORG_ID = "org_demo_001"
+    from app.core.context import org_id_var
+    ORG_ID = org_id_var.get()
 
     async with AsyncSessionLocal() as db:
         # 3-month average burn

@@ -17,9 +17,9 @@ from app.core.vector_store import vector_store
 from app.models.models import Invoice, Vendor, Approval, AuditLog, Organization
 from app.agents.invoice_agent import invoice_agent
 from app.agents.compliance_agent import compliance_agent
+from app.api.deps import get_org_id
 
 router = APIRouter()
-ORG_ID = "org_demo_001"   # Replace with Clerk org extraction per-request
 
 
 class InvoiceUpdate(BaseModel):
@@ -213,9 +213,7 @@ async def process_invoice_background(invoice_id: str, file_path: str, content_ty
 
             # ── Step 6: Compliance check (GPT-4o) ───────────────────────────
             compliance_result = await compliance_agent.evaluate(
-                entity_type="invoice",
-                entity_data={**extracted, "risk_level": invoice.risk_level, "risk_score": invoice.risk_score},
-                org_id=org_id,
+                transaction={**extracted, "risk_level": invoice.risk_level, "risk_score": invoice.risk_score, "org_id": org_id}
             )
             if compliance_result.get("violations"):
                 invoice.policy_violations = (invoice.policy_violations or []) + compliance_result["violations"]
@@ -255,6 +253,22 @@ async def process_invoice_background(invoice_id: str, file_path: str, content_ty
 
             logger.info(f"✅ Invoice {invoice_id} processed: risk={invoice.risk_level}, status={invoice.status}")
 
+            # ── Step 10: Start Temporal workflow ────────────────────────────
+            # This ensures that a durable workflow is running and ready to receive 
+            # the 'approve' or 'reject' signals from the UI.
+            from app.core.temporal import temporal_manager
+            if temporal_manager.client:
+                try:
+                    await temporal_manager.client.start_workflow(
+                        "InvoiceApprovalWorkflow",
+                        invoice_id,
+                        id=f"invoice-workflow-{invoice_id}",
+                        task_queue=settings.TEMPORAL_TASK_QUEUE,
+                    )
+                    logger.info(f"Temporal workflow started for invoice {invoice_id}")
+                except Exception as e:
+                    logger.error(f"Failed to auto-start Temporal workflow for invoice {invoice_id}: {e}")
+
         except Exception as e:
             logger.error(f"Invoice processing failed for {invoice_id}: {e}")
             async with AsyncSessionLocal() as db2:
@@ -269,6 +283,7 @@ async def upload_invoice(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     currency: str = Form("USD"),
+    org_id: str = Depends(get_org_id),
     db: AsyncSession = Depends(get_db),
 ):
     """Upload and enqueue invoice for the AI processing pipeline."""
@@ -282,7 +297,7 @@ async def upload_invoice(
         await f.write(content)
 
     invoice = Invoice(
-        org_id=ORG_ID,
+        org_id=org_id,
         file_path=file_path,
         currency=currency,
         status="processing",
@@ -299,7 +314,7 @@ async def upload_invoice(
         invoice_id=invoice_id,
         file_path=file_path,
         content_type=file.content_type or "application/pdf",
-        org_id=ORG_ID,
+        org_id=org_id,
     )
 
     return {
@@ -315,26 +330,27 @@ async def list_invoices(
     currency: Optional[str] = None,
     skip: int = 0,
     limit: int = 50,
+    org_id: str = Depends(get_org_id),
     db: AsyncSession = Depends(get_db),
 ):
     """List all invoices with optional filtering. Redis-cached for 30s."""
-    cache_key = f"{ORG_ID}:{status}:{currency}:{skip}:{limit}"
+    cache_key = f"{org_id}:{status}:{currency}:{skip}:{limit}"
     cached = await cache.get("invoices", cache_key)
     if cached:
         return cached
 
-    query = select(Invoice).where(Invoice.org_id == ORG_ID).order_by(desc(Invoice.created_at))
+    q = select(Invoice).where(Invoice.org_id == org_id).order_by(desc(Invoice.created_at))
     if status:
-        query = query.where(Invoice.status == status)
+        q = q.where(Invoice.status == status)
     if currency:
-        query = query.where(Invoice.currency == currency)
-    query = query.offset(skip).limit(limit)
+        q = q.where(Invoice.currency == currency)
+    q = q.offset(skip).limit(limit)
 
-    result = await db.execute(query)
+    result = await db.execute(q)
     invoices = result.scalars().all()
 
     # Total count
-    count_q = select(func.count(Invoice.id)).where(Invoice.org_id == ORG_ID)
+    count_q = select(func.count(Invoice.id)).where(Invoice.org_id == org_id)
     total = (await db.execute(count_q)).scalar_one_or_none() or 0
 
     response = {
@@ -346,9 +362,12 @@ async def list_invoices(
 
 
 @router.get("/stats/summary")
-async def invoice_stats(db: AsyncSession = Depends(get_db)):
+async def invoice_stats(
+    org_id: str = Depends(get_org_id),
+    db: AsyncSession = Depends(get_db),
+):
     """Invoice statistics — cached 60s."""
-    cached = await cache.get("invoice_stats", ORG_ID)
+    cached = await cache.get("invoice_stats", org_id)
     if cached:
         return cached
 
@@ -358,7 +377,7 @@ async def invoice_stats(db: AsyncSession = Depends(get_db)):
             func.sum(Invoice.total_amount).label("total_amount"),
             Invoice.status,
             Invoice.currency,
-        ).where(Invoice.org_id == ORG_ID).group_by(Invoice.status, Invoice.currency)
+        ).where(Invoice.org_id == org_id).group_by(Invoice.status, Invoice.currency)
     )
     rows = result.all()
     response = {
@@ -367,7 +386,7 @@ async def invoice_stats(db: AsyncSession = Depends(get_db)):
             for r in rows
         ]
     }
-    await cache.set("invoice_stats", response, 60, ORG_ID)
+    await cache.set("invoice_stats", response, 60, org_id)
     return response
 
 

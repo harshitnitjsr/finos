@@ -32,7 +32,8 @@ async def query_vendors(risk_level: Optional[str] = None, category: Optional[str
     from app.core.database import AsyncSessionLocal
     from app.models.models import Vendor
     from sqlalchemy import select, desc
-    ORG_ID = "org_demo_001"
+    from app.core.context import org_id_var
+    ORG_ID = org_id_var.get()
 
     async with AsyncSessionLocal() as db:
         q = select(Vendor).where(Vendor.org_id == ORG_ID, Vendor.is_active == True)
@@ -73,7 +74,8 @@ async def search_vendor(name: str) -> dict:
     from app.core.database import AsyncSessionLocal
     from app.models.models import Vendor, Invoice
     from sqlalchemy import select, func, desc
-    ORG_ID = "org_demo_001"
+    from app.core.context import org_id_var
+    ORG_ID = org_id_var.get()
 
     async with AsyncSessionLocal() as db:
         result = await db.execute(
@@ -118,7 +120,8 @@ async def get_high_risk_vendors(min_risk_score: float = 50.0) -> dict:
     from app.core.database import AsyncSessionLocal
     from app.models.models import Vendor
     from sqlalchemy import select, desc
-    ORG_ID = "org_demo_001"
+    from app.core.context import org_id_var
+    ORG_ID = org_id_var.get()
 
     async with AsyncSessionLocal() as db:
         result = await db.execute(
@@ -161,7 +164,8 @@ async def get_vendor_spend_distribution(risk_level: Optional[str] = None, catego
     from app.core.database import AsyncSessionLocal
     from app.models.models import Vendor
     from sqlalchemy import select, desc
-    ORG_ID = "org_demo_001"
+    from app.core.context import org_id_var
+    ORG_ID = org_id_var.get()
 
     async with AsyncSessionLocal() as db:
         q = select(Vendor).where(Vendor.org_id == ORG_ID, Vendor.is_active == True, Vendor.total_paid > 0)

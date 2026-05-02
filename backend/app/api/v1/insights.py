@@ -11,17 +11,20 @@ from app.core.redis_client import cache, TTL_INSIGHTS
 from app.models.models import Expense, Invoice, Approval, Vendor
 from app.agents.insight_agent import insight_agent
 
-router = APIRouter()
-ORG_ID = "org_demo_001"
+from app.api.deps import get_org_id
 
+router = APIRouter()
 
 @router.get("/executive-summary")
-async def executive_summary(db: AsyncSession = Depends(get_db)):
+async def executive_summary(
+    org_id: str = Depends(get_org_id),
+    db: AsyncSession = Depends(get_db)
+):
     """
     GPT-4o executive financial summary with real data context.
     Expensive — cached 10 minutes in Redis.
     """
-    cached = await cache.get("executive_summary", ORG_ID)
+    cached = await cache.get("executive_summary", org_id)
     if cached:
         return cached
 
@@ -31,29 +34,29 @@ async def executive_summary(db: AsyncSession = Depends(get_db)):
     # Gather real context data
     monthly_spend = await db.execute(
         select(func.sum(Expense.amount).label("total"), Expense.currency)
-        .where(Expense.org_id == ORG_ID, Expense.transaction_date >= thirty_days_ago)
+        .where(Expense.org_id == org_id, Expense.transaction_date >= thirty_days_ago)
         .group_by(Expense.currency)
     )
     spend_by_currency = [{"currency": r.currency, "total": float(r.total or 0)} for r in monthly_spend.all()]
 
     anomaly_count = (await db.execute(
         select(func.count(Expense.id))
-        .where(Expense.org_id == ORG_ID, Expense.is_anomaly == True, Expense.transaction_date >= thirty_days_ago)
+        .where(Expense.org_id == org_id, Expense.is_anomaly == True, Expense.transaction_date >= thirty_days_ago)
     )).scalar_one_or_none() or 0
 
     pending_approvals = (await db.execute(
         select(func.count(Approval.id))
-        .where(Approval.org_id == ORG_ID, Approval.status == "pending")
+        .where(Approval.org_id == org_id, Approval.status == "pending")
     )).scalar_one_or_none() or 0
 
     high_risk_count = (await db.execute(
         select(func.count(Invoice.id))
-        .where(Invoice.org_id == ORG_ID, Invoice.risk_level.in_(["high", "critical"]))
+        .where(Invoice.org_id == org_id, Invoice.risk_level.in_(["high", "critical"]))
     )).scalar_one_or_none() or 0
 
     top_categories = await db.execute(
         select(Expense.category, func.sum(Expense.amount).label("total"))
-        .where(Expense.org_id == ORG_ID, Expense.transaction_date >= thirty_days_ago, Expense.category.isnot(None))
+        .where(Expense.org_id == org_id, Expense.transaction_date >= thirty_days_ago, Expense.category.isnot(None))
         .group_by(Expense.category)
         .order_by(desc(func.sum(Expense.amount)))
         .limit(5)
@@ -78,17 +81,20 @@ async def executive_summary(db: AsyncSession = Depends(get_db)):
         "cache_ttl_seconds": TTL_INSIGHTS,
     }
 
-    await cache.set("executive_summary", response, TTL_INSIGHTS, ORG_ID)
+    await cache.set("executive_summary", response, TTL_INSIGHTS, org_id)
     return response
 
 
 @router.get("/recommendations")
-async def recommendations(db: AsyncSession = Depends(get_db)):
+async def recommendations(
+    org_id: str = Depends(get_org_id),
+    db: AsyncSession = Depends(get_db)
+):
     """
     AI-generated cost optimization recommendations from real spend data.
     Cached 10 minutes.
     """
-    cached = await cache.get("recommendations", ORG_ID)
+    cached = await cache.get("recommendations", org_id)
     if cached:
         return cached
 
@@ -98,7 +104,7 @@ async def recommendations(db: AsyncSession = Depends(get_db)):
     # Recurring SaaS expenses — detect potential duplicates
     recurring = await db.execute(
         select(Expense.vendor_name, func.count(Expense.id).label("cnt"), func.sum(Expense.amount).label("total"), Expense.currency)
-        .where(Expense.org_id == ORG_ID, Expense.is_recurring == True)
+        .where(Expense.org_id == org_id, Expense.is_recurring == True)
         .group_by(Expense.vendor_name, Expense.currency)
         .order_by(desc(func.sum(Expense.amount)))
         .limit(20)
@@ -111,7 +117,7 @@ async def recommendations(db: AsyncSession = Depends(get_db)):
     # High anomaly categories
     anomaly_categories = await db.execute(
         select(Expense.category, func.count(Expense.id).label("cnt"), func.sum(Expense.amount).label("total"))
-        .where(Expense.org_id == ORG_ID, Expense.is_anomaly == True, Expense.transaction_date >= ninety_days_ago)
+        .where(Expense.org_id == org_id, Expense.is_anomaly == True, Expense.transaction_date >= ninety_days_ago)
         .group_by(Expense.category)
         .order_by(desc(func.count(Expense.id)))
         .limit(5)
@@ -131,7 +137,7 @@ async def recommendations(db: AsyncSession = Depends(get_db)):
         "context": context,
         "generated_at": now.isoformat(),
     }
-    await cache.set("recommendations", response, TTL_INSIGHTS, ORG_ID)
+    await cache.set("recommendations", response, TTL_INSIGHTS, org_id)
     return response
 
 

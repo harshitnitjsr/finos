@@ -303,7 +303,7 @@ export default function ChatWidget() {
     setLoading(true);
 
     try {
-      const res = await fetch(`${API}/api/v1/chat/`, {
+      const res = await fetch(`/api/backend/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text.trim(), session_id: sessionId }),
@@ -340,7 +340,7 @@ export default function ChatWidget() {
   const clearChat = async () => {
     setMessages([]);
     setUnread(0);
-    try { await fetch(`${API}/api/v1/chat/${sessionId}`, { method: "DELETE" }); } catch { /* ignore */ }
+    try { await fetch(`/api/backend/chat/${sessionId}`, { method: "DELETE" }); } catch { /* ignore */ }
   };
 
   const totalToolCalls = messages.reduce((n, m) => n + (m.tool_calls?.length || 0), 0);

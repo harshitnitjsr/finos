@@ -5,20 +5,23 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Upload, Search, Filter, FileText, X, AlertTriangle, CheckCircle, Clock, InboxIcon } from "lucide-react";
 import { useCallback } from "react";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { apiFetch } from "@/lib/api";
 const cv = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.05 } } };
 const iv = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.3 } } };
 const CURRENCY_SYMBOLS: Record<string, string> = { USD: "$", INR: "₹", EUR: "€", GBP: "£", JPY: "¥" };
 
+interface InvoicesResponse {
+  invoices: Record<string, unknown>[];
+  total: number;
+}
+
 function useInvoices(status?: string) {
-  return useQuery({
+  return useQuery<InvoicesResponse>({
     queryKey: ["invoices", status],
-    queryFn: async () => {
+    queryFn: () => {
       const params = new URLSearchParams({ limit: "50" });
       if (status) params.set("status", status);
-      const r = await fetch(`${API}/api/v1/invoices/?${params}`);
-      if (!r.ok) throw new Error("Failed");
-      return r.json();
+      return apiFetch<InvoicesResponse>(`/invoices/?${params}`);
     },
     refetchInterval: 5000,
   });
@@ -39,7 +42,7 @@ export default function InvoicesPage() {
       const fd = new FormData();
       fd.append("file", file);
       fd.append("currency", "USD");
-      const r = await fetch(`${API}/api/v1/invoices/upload`, { method: "POST", body: fd });
+      const r = await fetch("/api/backend/invoices/upload", { method: "POST", body: fd });
       if (!r.ok) throw new Error("Upload failed");
       return r.json();
     },
@@ -47,29 +50,21 @@ export default function InvoicesPage() {
   });
 
   const startTemporalMutation = useMutation({
-    mutationFn: async (invoiceId: string) => {
-      const r = await fetch(`${API}/api/v1/temporal/invoice/start`, {
+    mutationFn: (invoiceId: string) =>
+      apiFetch("/temporal/invoice/start", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ invoice_id: invoiceId })
-      });
-      if (!r.ok) throw new Error("Failed to start workflow");
-      return r.json();
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["invoices"] })
+        body: JSON.stringify({ invoice_id: invoiceId }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["invoices"] }),
   });
 
   const approveTemporalMutation = useMutation({
-    mutationFn: async (invoiceId: string) => {
-      const r = await fetch(`${API}/api/v1/temporal/invoice/signal`, {
+    mutationFn: (invoiceId: string) =>
+      apiFetch("/temporal/invoice/signal", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ invoice_id: invoiceId, action: "approve" })
-      });
-      if (!r.ok) throw new Error("Failed to approve");
-      return r.json();
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["invoices"] })
+        body: JSON.stringify({ invoice_id: invoiceId, action: "approve" }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["invoices"] }),
   });
 
   const onDrop = useCallback((e: React.DragEvent) => {
@@ -247,7 +242,7 @@ export default function InvoicesPage() {
                   ))}
                 </div>
               )}
-              {selected.extracted_fields && Object.keys(selected.extracted_fields as object).length > 0 && (
+              {!!(selected.extracted_fields) && Object.keys(selected.extracted_fields as object).length > 0 && (
                 <div>
                   <p className="text-xs font-semibold text-white mb-2">AI Extracted Fields</p>
                   <div className="space-y-1.5">

@@ -1,11 +1,16 @@
 import Link from "next/link";
 import { ArrowRight, BarChart3, Shield, Zap } from "lucide-react";
-import * as motion from "framer-motion/client";
+import { auth } from "@/auth";
 
 export default async function HomePage() {
-  const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
-  const isClerkConfigured =
-    publishableKey && publishableKey !== "your_clerk_publishable_key";
+  const session = await auth();
+  const isLoggedIn = !!session?.user;
+
+  const ctaHref = isLoggedIn
+    ? session?.user?.onboardingComplete
+      ? "/dashboard"
+      : "/onboarding"
+    : "/auth/signin";
 
   return (
     <div className="flex flex-col min-h-screen bg-black text-white selection:bg-indigo-500/30">
@@ -17,22 +22,33 @@ export default async function HomePage() {
               <Zap className="w-5 h-5 text-white" />
             </div>
             <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-cyan-400">
-              Finos
+              AFOS
             </span>
           </div>
           <div className="flex gap-4">
-            <Link
-              href={isClerkConfigured ? "/sign-in" : "/dashboard"}
-              className="px-4 py-2 text-sm font-medium text-white/70 hover:text-white transition-colors"
-            >
-              Log in
-            </Link>
-            <Link
-              href={isClerkConfigured ? "/sign-up" : "/dashboard"}
-              className="px-4 py-2 text-sm font-medium bg-white text-black rounded-full hover:bg-white/90 transition-colors"
-            >
-              Get Started
-            </Link>
+            {isLoggedIn ? (
+              <Link
+                href={session?.user?.onboardingComplete ? "/dashboard" : "/onboarding"}
+                className="px-4 py-2 text-sm font-medium bg-white text-black rounded-full hover:bg-white/90 transition-colors"
+              >
+                Go to Dashboard
+              </Link>
+            ) : (
+              <>
+                <Link
+                  href="/auth/signin"
+                  className="px-4 py-2 text-sm font-medium text-white/70 hover:text-white transition-colors"
+                >
+                  Log in
+                </Link>
+                <Link
+                  href="/auth/signin"
+                  className="px-4 py-2 text-sm font-medium bg-white text-black rounded-full hover:bg-white/90 transition-colors"
+                >
+                  Get Started
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </nav>
@@ -66,13 +82,13 @@ export default async function HomePage() {
           </h1>
 
           <p className="max-w-2xl mx-auto text-xl text-white/60 mb-10">
-            Finos brings intelligent agents, real-time analytics, and automated
+            AFOS brings intelligent agents, real-time analytics, and automated
             compliance into one beautiful platform.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link
-              href={isClerkConfigured ? "/sign-up" : "/dashboard"}
+              href={ctaHref}
               className="flex items-center gap-2 px-8 py-4 text-base font-semibold bg-white text-black rounded-full hover:bg-gray-100 transition-all hover:scale-105"
             >
               Start for free
@@ -118,7 +134,7 @@ export default async function HomePage() {
 
       {/* Footer */}
       <footer className="py-12 text-center text-white/40">
-        <p>© 2026 Finos, Inc. All rights reserved.</p>
+        <p>© 2026 AFOS, Inc. All rights reserved.</p>
       </footer>
     </div>
   );

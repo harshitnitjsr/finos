@@ -3,20 +3,33 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { RefreshCw, InboxIcon, CheckCircle, Clock, AlertCircle, XCircle, Loader2 } from "lucide-react";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { apiFetch } from "@/lib/api";
 const cv = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.06 } } };
 const iv = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.35 } } };
 
+interface WorkflowsResponse {
+  workflows: Record<string, unknown>[];
+  counts: Record<string, number>;
+}
+
 function useWorkflows() {
-  return useQuery({
+  return useQuery<WorkflowsResponse>({
     queryKey: ["workflows"],
-    queryFn: async () => {
-      const r = await fetch(`${API}/api/v1/workflows/?limit=50`);
-      if (!r.ok) throw new Error("Failed");
-      return r.json();
-    },
+    queryFn: () => apiFetch<WorkflowsResponse>("/workflows/?limit=50"),
     refetchInterval: 3000,
   });
+}
+
+interface WorkflowStep { id: number; name: string; status: string; }
+interface WorkflowItem {
+  id: string;
+  name: string;
+  status: string;
+  workflow_type?: string;
+  retry_count?: number;
+  started_at?: string;
+  error?: string;
+  steps: WorkflowStep[];
 }
 
 const STATUS_CONFIG = {
@@ -30,15 +43,11 @@ const STATUS_CONFIG = {
 export default function WorkflowsPage() {
   const { data, isLoading } = useWorkflows();
   const qc = useQueryClient();
-  const workflows: Record<string, unknown>[] = data?.workflows || [];
+  const workflows: WorkflowItem[] = (data?.workflows as WorkflowItem[] | undefined) || [];
   const counts: Record<string, number> = data?.counts || {};
 
   const retryMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const r = await fetch(`${API}/api/v1/workflows/${id}/retry`, { method: "POST" });
-      if (!r.ok) throw new Error("Failed");
-      return r.json();
-    },
+    mutationFn: (id: string) => apiFetch(`/workflows/${id}/retry`, { method: "POST" }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["workflows"] }),
   });
 
@@ -82,7 +91,7 @@ export default function WorkflowsPage() {
           {workflows.map(wf => {
             const cfg = STATUS_CONFIG[wf.status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.pending;
             const StatusIcon = cfg.icon;
-            const steps = (wf.steps as { id: number; name: string; status: string }[]) || [];
+            const steps = wf.steps || [];
             const done = steps.filter(s => s.status === "completed").length;
             const progress = steps.length > 0 ? Math.round((done / steps.length) * 100) : 0;
             const isFailed = wf.status === "failed";
@@ -95,14 +104,14 @@ export default function WorkflowsPage() {
                       <StatusIcon size={18} style={{ color: cfg.color }} className={wf.status === "running" ? "animate-spin" : undefined} />
                     </div>
                     <div>
-                      <p className="text-sm font-bold text-white">{wf.name as string}</p>
+                      <p className="text-sm font-bold text-white">{wf.name}</p>
                       <p className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>
-                        {wf.workflow_type as string} · retry #{wf.retry_count as number || 0}
+                        {wf.workflow_type} · retry #{wf.retry_count || 0}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className={`badge text-xs ${cfg.badge}`}>{wf.status as string}</span>
+                    <span className={`badge text-xs ${cfg.badge}`}>{wf.status}</span>
                     {isFailed && (
                       <button
                         onClick={() => retryMutation.mutate(wf.id as string)}
@@ -119,7 +128,7 @@ export default function WorkflowsPage() {
                 <div className="mb-4">
                   <div className="flex justify-between mb-1.5">
                     <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>{progress}% complete</span>
-                    {wf.started_at && <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>{new Date(wf.started_at as string).toLocaleTimeString()}</span>}
+                    {wf.started_at && <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>{new Date(wf.started_at).toLocaleTimeString()}</span>}
                   </div>
                   <div className="progress-bar">
                     <div className="progress-fill transition-all duration-500" style={{

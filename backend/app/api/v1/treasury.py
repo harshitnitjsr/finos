@@ -11,19 +11,22 @@ from app.core.redis_client import cache, TTL_TREASURY
 from app.models.models import Expense, Invoice, Vendor
 from app.agents.insight_agent import insight_agent
 
-router = APIRouter()
-ORG_ID = "org_demo_001"
+from app.api.deps import get_org_id
 
+router = APIRouter()
 
 @router.get("/summary")
-async def treasury_summary(db: AsyncSession = Depends(get_db)):
+async def treasury_summary(
+    org_id: str = Depends(get_org_id),
+    db: AsyncSession = Depends(get_db)
+):
     """
     Treasury overview — monthly burn by currency from DB.
     Cash position pulled from organization config (or invoice paid totals as proxy).
     Upcoming payments derived from unpaid invoices due within 30 days.
     Redis-cached 60s.
     """
-    cached = await cache.get("treasury_summary", ORG_ID)
+    cached = await cache.get("treasury_summary", org_id)
     if cached:
         return cached
 
@@ -37,7 +40,7 @@ async def treasury_summary(db: AsyncSession = Depends(get_db)):
             func.sum(Expense.amount).label("total"),
             Expense.currency,
         ).where(
-            Expense.org_id == ORG_ID,
+            Expense.org_id == org_id,
             Expense.transaction_date >= thirty_days_ago,
         ).group_by(Expense.currency)
     )
@@ -52,7 +55,7 @@ async def treasury_summary(db: AsyncSession = Depends(get_db)):
             func.sum(Invoice.total_amount).label("total"),
             Invoice.currency,
         ).where(
-            Invoice.org_id == ORG_ID,
+            Invoice.org_id == org_id,
             Invoice.status == "paid",
         ).group_by(Invoice.currency)
     )
@@ -62,7 +65,7 @@ async def treasury_summary(db: AsyncSession = Depends(get_db)):
     upcoming_result = await db.execute(
         select(Invoice)
         .where(
-            Invoice.org_id == ORG_ID,
+            Invoice.org_id == org_id,
             Invoice.status.in_(["awaiting_approval", "approved", "pending"]),
             Invoice.due_date.isnot(None),
             Invoice.due_date <= next_thirty,
@@ -84,7 +87,7 @@ async def treasury_summary(db: AsyncSession = Depends(get_db)):
             func.sum(Expense.amount).label("total"),
             Expense.currency,
         ).where(
-            Expense.org_id == ORG_ID,
+            Expense.org_id == org_id,
             Expense.transaction_date >= now - timedelta(days=90),
             Expense.currency == "USD",
         ).group_by("month", Expense.currency)
@@ -116,14 +119,17 @@ async def treasury_summary(db: AsyncSession = Depends(get_db)):
         "generated_at": now.isoformat(),
     }
 
-    await cache.set("treasury_summary", response, TTL_TREASURY, ORG_ID)
+    await cache.set("treasury_summary", response, TTL_TREASURY, org_id)
     return response
 
 
 @router.get("/forecast")
-async def cash_flow_forecast(db: AsyncSession = Depends(get_db)):
+async def cash_flow_forecast(
+    org_id: str = Depends(get_org_id),
+    db: AsyncSession = Depends(get_db)
+):
     """AI-powered 12-month cash flow forecast using actual historical spend data."""
-    cached = await cache.get("treasury_forecast", ORG_ID)
+    cached = await cache.get("treasury_forecast", org_id)
     if cached:
         return cached
 
@@ -136,7 +142,7 @@ async def cash_flow_forecast(db: AsyncSession = Depends(get_db)):
             func.sum(Expense.amount).label("total"),
             Expense.currency,
         ).where(
-            Expense.org_id == ORG_ID,
+            Expense.org_id == org_id,
             Expense.transaction_date >= now - timedelta(days=180),
         ).group_by("month", Expense.currency)
         .order_by("month")
@@ -160,17 +166,20 @@ async def cash_flow_forecast(db: AsyncSession = Depends(get_db)):
 
     forecast = await insight_agent.forecast_cashflow(historical)
 
-    await cache.set("treasury_forecast", forecast, 300, ORG_ID)
+    await cache.set("treasury_forecast", forecast, 300, org_id)
     return forecast
 
 
 @router.get("/cash-position")
-async def cash_position(db: AsyncSession = Depends(get_db)):
+async def cash_position(
+    org_id: str = Depends(get_org_id),
+    db: AsyncSession = Depends(get_db)
+):
     """
     Derive cash position per currency from paid invoices + configured starting balances.
     In production this would connect to bank APIs.
     """
-    cached = await cache.get("cash_position", ORG_ID)
+    cached = await cache.get("cash_position", org_id)
     if cached:
         return cached
 
@@ -179,7 +188,7 @@ async def cash_position(db: AsyncSession = Depends(get_db)):
         select(
             func.sum(Invoice.total_amount).label("outflow"),
             Invoice.currency,
-        ).where(Invoice.org_id == ORG_ID, Invoice.status == "paid")
+        ).where(Invoice.org_id == org_id, Invoice.status == "paid")
         .group_by(Invoice.currency)
     )
     outflows = {r.currency: float(r.outflow or 0) for r in result.all()}
@@ -203,5 +212,5 @@ async def cash_position(db: AsyncSession = Depends(get_db)):
         })
 
     response = {"positions": positions, "generated_at": datetime.utcnow().isoformat()}
-    await cache.set("cash_position", response, TTL_TREASURY, ORG_ID)
+    await cache.set("cash_position", response, TTL_TREASURY, org_id)
     return response

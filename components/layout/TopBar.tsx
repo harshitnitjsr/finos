@@ -1,7 +1,10 @@
 "use client";
 import { useState } from "react";
-import { Search, Bell, Globe, ChevronDown, User } from "lucide-react";
+import { Search, Bell, Globe, ChevronDown, LogOut, User, Settings } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useSession, signOut } from "next-auth/react";
+import Image from "next/image";
+import Link from "next/link";
 
 const CURRENCIES = ["USD", "INR", "EUR", "GBP", "JPY"];
 const CURRENCY_SYMBOLS: Record<string, string> = {
@@ -140,32 +143,112 @@ export default function TopBar({ onCommandOpen }: TopBarProps) {
           </AnimatePresence>
         </div>
 
-        {/* User Avatar — Clerk UserButton is loaded by parent when Clerk is configured */}
-        <ClerkAwareUser />
+        {/* User Menu */}
+        <UserMenu />
       </div>
     </header>
   );
 }
 
-// Isolated Clerk component — safe to import because it checks context availability
-function ClerkAwareUser() {
+function UserMenu() {
+  const { data: session } = useSession();
+  const [open, setOpen] = useState(false);
+
+  const user = session?.user;
+  const initials = user?.name
+    ? user.name.split(" ").map((n) => n[0]).slice(0, 2).join("").toUpperCase()
+    : "U";
+
   return (
-    <div
-      className="w-9 h-9 rounded-xl flex items-center justify-center cursor-pointer transition-all hover:opacity-80"
-      style={{
-        background: "linear-gradient(135deg, #3b82f6, #8b5cf6)",
-        border: "1px solid rgba(139,92,246,0.3)",
-      }}
-      title="Demo User"
-    >
-      <User size={16} className="text-white" />
+    <div className="relative">
+      <button
+        id="user-menu-btn"
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-2 px-2 py-1.5 rounded-xl transition-all hover:bg-white/5"
+        title={user?.name ?? "Account"}
+      >
+        {user?.image ? (
+          <Image
+            src={user.image}
+            alt={user.name ?? "avatar"}
+            width={32}
+            height={32}
+            className="w-8 h-8 rounded-xl object-cover ring-2 ring-indigo-500/30"
+          />
+        ) : (
+          <div
+            className="w-8 h-8 rounded-xl flex items-center justify-center text-xs font-bold text-white"
+            style={{ background: "linear-gradient(135deg, #4f46e5, #7c3aed)" }}
+          >
+            {initials}
+          </div>
+        )}
+        <div className="text-left hidden sm:block">
+          <p className="text-xs font-semibold text-white leading-tight">{user?.name ?? "User"}</p>
+          <p className="text-xs leading-tight" style={{ color: "var(--color-text-muted)" }}>
+            {session?.user?.orgName ?? "No organisation"}
+          </p>
+        </div>
+        <ChevronDown size={12} style={{ color: "var(--color-text-muted)" }} />
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -8, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -8, scale: 0.95 }}
+            transition={{ duration: 0.15 }}
+            className="absolute right-0 top-full mt-2 z-50 rounded-xl overflow-hidden"
+            style={{
+              background: "var(--color-bg-elevated)",
+              border: "1px solid var(--color-border-hover)",
+              minWidth: 200,
+              boxShadow: "var(--shadow-elevated)",
+            }}
+          >
+            {/* User info header */}
+            <div className="px-4 py-3 border-b" style={{ borderColor: "var(--color-border)" }}>
+              <p className="text-sm font-semibold text-white">{user?.name}</p>
+              <p className="text-xs mt-0.5 truncate" style={{ color: "var(--color-text-muted)" }}>
+                {user?.email}
+              </p>
+            </div>
+
+            <Link
+              href="/settings"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-3 w-full px-4 py-2.5 text-sm transition-colors hover:bg-white/5"
+              style={{ color: "var(--color-text-secondary)" }}
+            >
+              <Settings size={14} />
+              Settings
+            </Link>
+
+            <div className="border-t" style={{ borderColor: "var(--color-border)" }} />
+
+            <button
+              id="signout-btn"
+              onClick={() => {
+                setOpen(false);
+                signOut({ callbackUrl: "/" });
+              }}
+              className="flex items-center gap-3 w-full px-4 py-2.5 text-sm transition-colors hover:bg-rose-500/10 text-left"
+              style={{ color: "#f87171" }}
+            >
+              <LogOut size={14} />
+              Sign out
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
 const NOTIFICATIONS = [
-  { title: "⚠️ Invoice INV-2024103 flagged — $45,000 unknown vendor", type: "warning", time: "2 min ago" },
-  { title: "🔴 Anomaly detected: 312% spend spike in Cloud Infrastructure", type: "danger", time: "8 min ago" },
+  { title: "⚠️ Invoice flagged — $45,000 unknown vendor", type: "warning", time: "2 min ago" },
+  { title: "🔴 Anomaly: 312% spend spike in Cloud", type: "danger", time: "8 min ago" },
   { title: "✅ 3 approvals pending your review", type: "info", time: "15 min ago" },
-  { title: "🤖 Invoice Agent processed 12 invoices successfully", type: "success", time: "1 hour ago" },
+  { title: "🤖 Invoice Agent processed 12 invoices", type: "success", time: "1 hour ago" },
 ];

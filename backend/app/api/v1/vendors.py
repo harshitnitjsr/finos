@@ -13,9 +13,9 @@ from app.core.redis_client import cache, TTL_VENDOR_LIST
 from app.core.vector_store import vector_store
 from app.core.model_router import model_router
 from app.models.models import Vendor, Invoice, Expense
+from app.api.deps import get_org_id
 
 router = APIRouter()
-ORG_ID = "org_demo_001"
 
 
 class VendorCreate(BaseModel):
@@ -39,26 +39,27 @@ async def list_vendors(
     category: Optional[str] = None,
     risk_level: Optional[str] = None,
     limit: int = Query(50, ge=1, le=200),
+    org_id: str = Depends(get_org_id),
     db: AsyncSession = Depends(get_db),
 ):
     """List all vendors. Cached 5 min."""
-    cache_key = f"{ORG_ID}:{category}:{risk_level}:{limit}"
+    cache_key = f"{org_id}:{category}:{risk_level}:{limit}"
     cached = await cache.get("vendors", cache_key)
     if cached:
         return cached
 
-    query = (
+    q = (
         select(Vendor)
-        .where(Vendor.org_id == ORG_ID)
+        .where(Vendor.org_id == org_id)
         .order_by(desc(Vendor.total_paid))
         .limit(limit)
     )
     if category:
-        query = query.where(Vendor.category == category)
+        q = q.where(Vendor.category == category)
     if risk_level:
-        query = query.where(Vendor.risk_level == risk_level)
+        q = q.where(Vendor.risk_level == risk_level)
 
-    result = await db.execute(query)
+    result = await db.execute(q)
     vendors = result.scalars().all()
 
     response = {
@@ -70,10 +71,14 @@ async def list_vendors(
 
 
 @router.post("/")
-async def create_vendor(body: VendorCreate, db: AsyncSession = Depends(get_db)):
+async def create_vendor(
+    body: VendorCreate,
+    org_id: str = Depends(get_org_id),
+    db: AsyncSession = Depends(get_db),
+):
     """Create vendor and index in Qdrant."""
     vendor = Vendor(
-        org_id=ORG_ID,
+        org_id=org_id,
         name=body.name,
         email=body.email,
         category=body.category,
@@ -86,14 +91,13 @@ async def create_vendor(body: VendorCreate, db: AsyncSession = Depends(get_db)):
     db.add(vendor)
     await db.flush()
 
-    # Embed and index in Qdrant for semantic matching
     embed_text = f"{body.name} {body.category or ''} {body.payment_currency}"
     embedding = await model_router.embed(embed_text)
     await vector_store.upsert_vendor(
         vendor_id=str(vendor.id),
         embedding=embedding,
         payload={
-            "org_id": ORG_ID,
+            "org_id": org_id,
             "name": body.name,
             "category": body.category or "",
             "risk_level": "low",
@@ -141,12 +145,16 @@ async def update_vendor(vendor_id: str, body: VendorUpdate, db: AsyncSession = D
 
 
 @router.get("/search/semantic")
-async def semantic_vendor_search(q: str, db: AsyncSession = Depends(get_db)):
+async def semantic_vendor_search(
+    q: str,
+    org_id: str = Depends(get_org_id),
+    db: AsyncSession = Depends(get_db),
+):
     """Semantic vendor search via Qdrant embeddings."""
     embedding = await model_router.embed(q)
     matches = await vector_store.find_similar_vendors(
         embedding=embedding,
-        org_id=ORG_ID,
+        org_id=org_id,
         threshold=0.75,
         limit=10,
     )

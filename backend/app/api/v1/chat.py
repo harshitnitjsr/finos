@@ -19,9 +19,9 @@ from loguru import logger
 
 from app.core.database import get_db
 from app.core.memory import memory_service
+from app.api.deps import get_org_id
 
 router = APIRouter()
-ORG_ID = "org_demo_001"
 
 
 # ── Request / Response schemas ────────────────────────────────────────────────
@@ -47,8 +47,12 @@ class ChatResponse(BaseModel):
 
 # ── Chat endpoint ─────────────────────────────────────────────────────────────
 
-@router.post("/", response_model=ChatResponse)
-async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
+@router.post("", response_model=ChatResponse)
+async def chat(
+    request: ChatRequest,
+    org_id: str = Depends(get_org_id),
+    db: AsyncSession = Depends(get_db)
+):
     """
     Multi-agent chat with 3-tier memory-augmented RAG.
 
@@ -65,7 +69,7 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
     memory_context, lc_history = await memory_service.get_context(
         session_id=request.session_id,
         user_query=request.message,
-        org_id=ORG_ID,
+        org_id=org_id,
     )
     memory_used = bool(memory_context)
     sources = []
@@ -82,7 +86,7 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
         "agent_id": "",
         "agent_name": "",
         "run_id": run_id,
-        "org_id": ORG_ID,
+        "org_id": org_id,
         "session_id": request.session_id,
         "tool_calls": [],
         "final_response": None,
@@ -118,7 +122,7 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
     # ── 4. Save turn to all 3 memory stores (async background) ──────────────
     await memory_service.save_turn(
         session_id=request.session_id,
-        org_id=ORG_ID,
+        org_id=org_id,
         user_message=request.message,
         ai_message=response_text,
         agent_name=agent_name,
@@ -153,19 +157,26 @@ async def chat(request: ChatRequest, db: AsyncSession = Depends(get_db)):
 # ── Session management ────────────────────────────────────────────────────────
 
 @router.delete("/{session_id}")
-async def clear_session(session_id: str):
+async def clear_session(
+    session_id: str,
+    org_id: str = Depends(get_org_id)
+):
     """Clear Redis session buffer (SQL + Qdrant history is retained for audit)."""
-    await memory_service.clear_session(session_id, ORG_ID)
+    await memory_service.clear_session(session_id, org_id)
     return {"message": f"Session '{session_id}' cleared from Redis cache"}
 
 
 @router.get("/history/{session_id}")
-async def get_history(session_id: str, limit: int = 50):
+async def get_history(
+    session_id: str,
+    limit: int = 50,
+    org_id: str = Depends(get_org_id)
+):
     """
     Full session history from PostgreSQL (authoritative, persistent).
     Includes agent metadata, tool calls, and token usage per turn.
     """
-    messages = await memory_service.get_session_history(session_id, ORG_ID, limit=limit)
+    messages = await memory_service.get_session_history(session_id, org_id, limit=limit)
     return {
         "session_id": session_id,
         "messages": messages,
@@ -175,7 +186,11 @@ async def get_history(session_id: str, limit: int = 50):
 
 
 @router.get("/sessions")
-async def list_sessions(limit: int = 20, db: AsyncSession = Depends(get_db)):
+async def list_sessions(
+    limit: int = 20,
+    org_id: str = Depends(get_org_id),
+    db: AsyncSession = Depends(get_db)
+):
     """List all chat sessions with message counts and last activity."""
     from app.models.models import ConversationMessage
     from sqlalchemy import select, func, desc
@@ -185,7 +200,7 @@ async def list_sessions(limit: int = 20, db: AsyncSession = Depends(get_db)):
             func.count(ConversationMessage.id).label("message_count"),
             func.max(ConversationMessage.created_at).label("last_active"),
         )
-        .where(ConversationMessage.org_id == ORG_ID)
+        .where(ConversationMessage.org_id == org_id)
         .group_by(ConversationMessage.session_id)
         .order_by(desc(func.max(ConversationMessage.created_at)))
         .limit(limit)
@@ -204,11 +219,16 @@ async def list_sessions(limit: int = 20, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/tool-logs")
-async def get_tool_logs(limit: int = 50, agent_id: Optional[str] = None, db: AsyncSession = Depends(get_db)):
+async def get_tool_logs(
+    limit: int = 50,
+    agent_id: Optional[str] = None,
+    org_id: str = Depends(get_org_id),
+    db: AsyncSession = Depends(get_db)
+):
     """Get recent tool call logs across all agents."""
     from app.models.models import AgentToolLog
     from sqlalchemy import select, desc
-    q = select(AgentToolLog).where(AgentToolLog.org_id == ORG_ID)
+    q = select(AgentToolLog).where(AgentToolLog.org_id == org_id)
     if agent_id:
         q = q.where(AgentToolLog.agent_id == agent_id)
     q = q.order_by(desc(AgentToolLog.created_at)).limit(min(limit, 200))

@@ -44,7 +44,8 @@ async def query_expenses(days: int = 30, currency: Optional[str] = None, categor
     from app.core.database import AsyncSessionLocal
     from app.models.models import Expense
     from sqlalchemy import select, desc
-    ORG_ID = "org_demo_001"
+    from app.core.context import org_id_var
+    ORG_ID = org_id_var.get()
 
     async with AsyncSessionLocal() as db:
         since = datetime.utcnow() - timedelta(days=days)
@@ -90,7 +91,8 @@ async def get_anomalous_expenses(days: int = 30, min_score: float = 0.5) -> dict
     from app.core.database import AsyncSessionLocal
     from app.models.models import Expense
     from sqlalchemy import select, desc
-    ORG_ID = "org_demo_001"
+    from app.core.context import org_id_var
+    ORG_ID = org_id_var.get()
 
     async with AsyncSessionLocal() as db:
         since = datetime.utcnow() - timedelta(days=days)
@@ -138,7 +140,8 @@ async def get_category_spend_summary(days: int = 90, currency: Optional[str] = "
     from app.core.database import AsyncSessionLocal
     from app.models.models import Expense
     from sqlalchemy import select, func, desc
-    ORG_ID = "org_demo_001"
+    from app.core.context import org_id_var
+    ORG_ID = org_id_var.get()
 
     async with AsyncSessionLocal() as db:
         since = datetime.utcnow() - timedelta(days=days)
@@ -180,7 +183,8 @@ async def get_recurring_subscriptions(days: int = 90) -> dict:
     from app.core.database import AsyncSessionLocal
     from app.models.models import Expense
     from sqlalchemy import select, func, desc
-    ORG_ID = "org_demo_001"
+    from app.core.context import org_id_var
+    ORG_ID = org_id_var.get()
 
     async with AsyncSessionLocal() as db:
         since = datetime.utcnow() - timedelta(days=days)

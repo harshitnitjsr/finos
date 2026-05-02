@@ -4,20 +4,24 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { CheckCircle, XCircle, Clock, AlertTriangle, InboxIcon, ChevronDown, ChevronUp } from "lucide-react";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { apiFetch } from "@/lib/api";
 const cv = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.05 } } };
 const iv = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.3 } } };
 const CURRENCY_SYMBOLS: Record<string, string> = { USD: "$", INR: "₹", EUR: "€", GBP: "£", JPY: "¥" };
 
+interface ApprovalsResponse {
+  approvals: Record<string, unknown>[];
+  total: number;
+  counts: Record<string, number>;
+}
+
 function useApprovals(status?: string) {
-  return useQuery({
+  return useQuery<ApprovalsResponse>({
     queryKey: ["approvals", status],
-    queryFn: async () => {
+    queryFn: () => {
       const params = new URLSearchParams({ limit: "50" });
       if (status) params.set("status", status);
-      const r = await fetch(`${API}/api/v1/approvals/?${params}`);
-      if (!r.ok) throw new Error("Failed");
-      return r.json();
+      return apiFetch<ApprovalsResponse>(`/approvals/?${params}`);
     },
     refetchInterval: 10000,
   });
@@ -32,11 +36,8 @@ export default function ApprovalsPage() {
   const approvals: Record<string, unknown>[] = data?.approvals || [];
 
   const actionMutation = useMutation({
-    mutationFn: async ({ id, action }: { id: string; action: "approve" | "reject" }) => {
-      const r = await fetch(`${API}/api/v1/approvals/${id}/${action}`, { method: "POST" });
-      if (!r.ok) throw new Error("Failed");
-      return r.json();
-    },
+    mutationFn: ({ id, action }: { id: string; action: "approve" | "reject" }) =>
+      apiFetch(`/approvals/${id}/${action}`, { method: "POST" }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["approvals"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
@@ -139,13 +140,13 @@ export default function ApprovalsPage() {
                 {isExpanded && (
                   <div className="px-5 pb-5 border-t" style={{ borderColor: "var(--color-border)" }}>
                     <div className="pt-4 space-y-3">
-                      {appr.ai_explanation && (
+                      {!!(appr.ai_explanation as string) && (
                         <div className="p-3 rounded-xl" style={{ background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.15)" }}>
                           <p className="text-xs font-semibold text-blue-400 mb-1">AI Analysis</p>
                           <p className="text-xs" style={{ color: "var(--color-text-secondary)" }}>{appr.ai_explanation as string}</p>
                         </div>
                       )}
-                      {(appr.policy_checks as { policy: string; passed: boolean }[])?.length > 0 && (
+                      {((appr.policy_checks as { policy: string; passed: boolean }[])?.length ?? 0) > 0 && (
                         <div>
                           <p className="text-xs font-semibold text-white mb-2">Policy Checks</p>
                           {(appr.policy_checks as { policy: string; passed: boolean }[]).map((pc, i) => (

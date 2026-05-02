@@ -6,39 +6,39 @@ from sqlalchemy import select, func, desc
 from app.core.database import get_db
 from app.core.redis_client import cache
 from app.models.models import Workflow
+from app.api.deps import get_org_id
 
 router = APIRouter()
-ORG_ID = "org_demo_001"
 
 
 @router.get("/")
 async def list_workflows(
     status: str = Query(None),
     limit: int = Query(50, ge=1, le=200),
+    org_id: str = Depends(get_org_id),
     db: AsyncSession = Depends(get_db),
 ):
     """List workflows from DB, optionally filtered by status."""
-    cache_key = f"{ORG_ID}:{status}:{limit}"
+    cache_key = f"{org_id}:{status}:{limit}"
     cached = await cache.get("workflows", cache_key)
     if cached:
         return cached
 
-    query = (
+    q = (
         select(Workflow)
-        .where(Workflow.org_id == ORG_ID)
+        .where(Workflow.org_id == org_id)
         .order_by(desc(Workflow.started_at))
         .limit(limit)
     )
     if status:
-        query = query.where(Workflow.status == status)
+        q = q.where(Workflow.status == status)
 
-    result = await db.execute(query)
+    result = await db.execute(q)
     wfs = result.scalars().all()
 
-    # Status counts
     counts_result = await db.execute(
         select(Workflow.status, func.count(Workflow.id).label("cnt"))
-        .where(Workflow.org_id == ORG_ID)
+        .where(Workflow.org_id == org_id)
         .group_by(Workflow.status)
     )
     counts = {r.status: r.cnt for r in counts_result.all()}

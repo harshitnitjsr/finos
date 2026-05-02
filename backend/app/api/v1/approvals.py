@@ -8,9 +8,9 @@ from pydantic import BaseModel
 from app.core.database import get_db
 from app.core.redis_client import cache
 from app.models.models import Approval, Invoice
+from app.api.deps import get_org_id
 
 router = APIRouter()
-ORG_ID = "org_demo_001"
 
 
 class ApprovalDecision(BaseModel):
@@ -24,30 +24,28 @@ async def list_approvals(
     status: Optional[str] = None,
     skip: int = 0,
     limit: int = Query(50, ge=1, le=200),
+    org_id: str = Depends(get_org_id),
     db: AsyncSession = Depends(get_db),
 ):
     """List approvals with status counts. Cached 10s."""
-    cache_key = f"{ORG_ID}:{status}:{skip}:{limit}"
+    cache_key = f"{org_id}:{status}:{skip}:{limit}"
     cached = await cache.get("approvals", cache_key)
     if cached:
         return cached
 
-    # Main query
-    query = select(Approval).where(Approval.org_id == ORG_ID).order_by(desc(Approval.created_at))
+    q = select(Approval).where(Approval.org_id == org_id).order_by(desc(Approval.created_at))
     if status:
-        query = query.where(Approval.status == status)
-    query = query.offset(skip).limit(limit)
-    result = await db.execute(query)
+        q = q.where(Approval.status == status)
+    q = q.offset(skip).limit(limit)
+    result = await db.execute(q)
     approvals = result.scalars().all()
 
-    # Total count
-    total_q = select(func.count(Approval.id)).where(Approval.org_id == ORG_ID)
+    total_q = select(func.count(Approval.id)).where(Approval.org_id == org_id)
     total = (await db.execute(total_q)).scalar_one_or_none() or 0
 
-    # Status breakdown counts
     counts_result = await db.execute(
         select(Approval.status, func.count(Approval.id).label("cnt"))
-        .where(Approval.org_id == ORG_ID)
+        .where(Approval.org_id == org_id)
         .group_by(Approval.status)
     )
     counts = {r.status: r.cnt for r in counts_result.all()}
@@ -108,25 +106,25 @@ async def _decide(
     approval.decision_at = datetime.utcnow()
     approval.notes = notes
 
-    # Update invoice status accordingly and FIRE TEMPORAL SIGNAL to wake up the workflow!
     if approval.invoice_id:
         from app.core.temporal import temporal_manager
-        
+
         invoice = await db.get(Invoice, approval.invoice_id)
         if invoice:
             invoice.status = "approved" if decision == "approve" else "rejected"
             invoice.updated_at = datetime.utcnow()
-            
+
             try:
-                # If there's an active workflow for this invoice, wake it up!
                 if temporal_manager.client:
-                    handle = temporal_manager.client.get_workflow_handle(f"invoice-workflow-{approval.invoice_id}")
+                    handle = temporal_manager.client.get_workflow_handle(
+                        f"invoice-workflow-{approval.invoice_id}"
+                    )
                     if decision == "approve":
                         await handle.signal("approve_invoice")
                     elif decision == "reject":
                         await handle.signal("reject_invoice")
-            except Exception as e:
-                pass # Workflow might not exist or already completed, which is fine for generic approvals
+            except Exception:
+                pass
 
     await db.commit()
     await cache.invalidate_pattern("approvals")
@@ -136,9 +134,14 @@ async def _decide(
 
 
 @router.get("/stats/pending-count")
-async def pending_count(db: AsyncSession = Depends(get_db)):
+async def pending_count(
+    org_id: str = Depends(get_org_id),
+    db: AsyncSession = Depends(get_db),
+):
     result = await db.execute(
-        select(func.count(Approval.id)).where(Approval.org_id == ORG_ID, Approval.status == "pending")
+        select(func.count(Approval.id)).where(
+            Approval.org_id == org_id, Approval.status == "pending"
+        )
     )
     return {"pending_count": result.scalar_one_or_none() or 0}
 

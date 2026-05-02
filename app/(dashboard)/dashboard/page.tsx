@@ -11,39 +11,44 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell,
 } from "recharts";
 import Link from "next/link";
+import { apiFetch } from "@/lib/api";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 const COLORS = ["#3b82f6", "#10b981", "#8b5cf6", "#f59e0b", "#f43f5e", "#06b6d4"];
 const CS: Record<string, string> = { USD: "$", INR: "₹", EUR: "€", GBP: "£", JPY: "¥" };
 
 const cv = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.06 } } };
-const iv = { hidden: { opacity: 0, y: 18 }, show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: "easeOut" } } };
+const iv = { hidden: { opacity: 0, y: 18 }, show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: "easeOut" as const } } };
+
+interface DashboardResp { kpis: Record<string, unknown>; charts: Record<string, unknown>; recent_invoices?: unknown[]; }
+interface InsightsResp { status?: string; headline?: string; bullets?: string[]; summary?: string; key_metrics?: unknown[]; recommendations?: unknown[]; }
+interface ApprovalsResp { approvals: Record<string, unknown>[]; total: number; counts: Record<string, number>; }
+interface WorkflowsResp { workflows: Record<string, unknown>[]; counts: Record<string, number>; }
 
 function useAnalytics() {
-  return useQuery({
+  return useQuery<DashboardResp>({
     queryKey: ["dashboard"],
-    queryFn: async () => { const r = await fetch(`${API}/api/v1/analytics/dashboard`); if (!r.ok) throw new Error("x"); return r.json(); },
+    queryFn: () => apiFetch<DashboardResp>("/analytics/dashboard"),
     refetchInterval: 30000,
   });
 }
 function useInsights() {
-  return useQuery({
+  return useQuery<InsightsResp>({
     queryKey: ["executive-summary"],
-    queryFn: async () => { const r = await fetch(`${API}/api/v1/insights/executive-summary`); if (!r.ok) throw new Error("x"); return r.json(); },
+    queryFn: () => apiFetch<InsightsResp>("/insights/executive-summary"),
     staleTime: 5 * 60 * 1000, retry: false,
   });
 }
 function useApprovals() {
-  return useQuery({
+  return useQuery<ApprovalsResp>({
     queryKey: ["approvals-preview"],
-    queryFn: async () => { const r = await fetch(`${API}/api/v1/approvals/?status=pending&limit=5`); if (!r.ok) throw new Error("x"); return r.json(); },
+    queryFn: () => apiFetch<ApprovalsResp>("/approvals/?status=pending&limit=5"),
     refetchInterval: 15000,
   });
 }
 function useWorkflows() {
-  return useQuery({
+  return useQuery<WorkflowsResp>({
     queryKey: ["workflows-preview"],
-    queryFn: async () => { const r = await fetch(`${API}/api/v1/workflows/?limit=5`); if (!r.ok) throw new Error("x"); return r.json(); },
+    queryFn: () => apiFetch<WorkflowsResp>("/workflows/?limit=5"),
     refetchInterval: 5000,
   });
 }
@@ -54,18 +59,22 @@ export default function DashboardPage() {
   const { data: approvalsData } = useApprovals();
   const { data: workflowsData } = useWorkflows();
 
-  const kpis = analytics?.kpis || {};
-  const charts = analytics?.charts || {};
+  type SpendItem = { currency: string; total: number; change_pct?: number };
+  type TrendPoint = { date: string; amount: number };
+  type CategoryItem = { category: string; amount: number; currency: string };
 
-  const usdSpend = kpis.monthly_spend?.find((s: { currency: string }) => s.currency === "USD");
+  const kpis = analytics?.kpis as Record<string, unknown> || {};
+  const charts = analytics?.charts as Record<string, unknown> || {};
+
+  const usdSpend = (kpis.monthly_spend as SpendItem[] | undefined)?.find(s => s.currency === "USD");
   const currUsdSpend = usdSpend?.total || 0;
   const spendChangePct = usdSpend?.change_pct;
 
-  const trendData = (charts.expense_trend || []).map((d: { date: string; amount: number }) => ({
+  const trendData = ((charts.expense_trend as TrendPoint[] | undefined) || []).map(d => ({
     date: d.date ? new Date(d.date).toLocaleDateString("en", { month: "short", day: "numeric" }) : "",
     v: d.amount,
   }));
-  const categoryData = charts.category_breakdown || [];
+  const categoryData = (charts.category_breakdown as CategoryItem[] | undefined) || [];
   const approvals = approvalsData?.approvals || [];
   const workflows = workflowsData?.workflows || [];
 
@@ -109,9 +118,9 @@ export default function DashboardPage() {
             ) : insights ? (
               <>
                 <p className="text-sm font-semibold text-white leading-snug">{insights.headline}</p>
-                {insights.bullets?.length > 0 && (
+                {(insights.bullets?.length ?? 0) > 0 && (
                   <div className="flex flex-wrap gap-x-4 mt-1.5">
-                    {insights.bullets.slice(0, 3).map((b: string, i: number) => (
+                    {insights.bullets?.slice(0, 3).map((b: string, i: number) => (
                       <span key={i} className="flex items-center gap-1 text-xs" style={{ color: "var(--color-text-secondary)" }}>
                         <Zap size={9} className="text-blue-400 flex-shrink-0" />{b}
                       </span>
@@ -142,15 +151,15 @@ export default function DashboardPage() {
           {
             label: "Pending Approvals", sub: "Require review",
             value: isLoading ? null : kpis.pending_approvals != null ? String(kpis.pending_approvals) : "—",
-            detail: kpis.pending_approvals ? "Awaiting your action" : "All caught up ✓",
+            detail: (kpis.pending_approvals as number) > 0 ? "Awaiting your action" : "All caught up ✓",
             trend: null, trendVal: undefined,
             Icon: CheckSquare, color: "#f59e0b", glow: "rgba(245,158,11,0.1)", border: "rgba(245,158,11,0.2)",
           },
           {
             label: "AI Anomalies", sub: "Last 30 days",
             value: isLoading ? null : kpis.anomaly_count != null ? String(kpis.anomaly_count) : "—",
-            detail: kpis.anomaly_count > 0 ? "Flagged by AI agents" : "No anomalies detected",
-            trend: kpis.anomaly_count > 0 ? "up" as const : null, trendVal: undefined,
+            detail: (kpis.anomaly_count as number) > 0 ? "Flagged by AI agents" : "No anomalies detected",
+            trend: (kpis.anomaly_count as number) > 0 ? "up" as const : null, trendVal: undefined,
             Icon: AlertTriangle, color: "#f43f5e", glow: "rgba(244,63,94,0.1)", border: "rgba(244,63,94,0.2)",
           },
           {
@@ -218,7 +227,7 @@ export default function DashboardPage() {
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
                 <XAxis dataKey="date" tick={{ fill: "#475569", fontSize: 10 }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: "#475569", fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `$${(v / 1000).toFixed(0)}K`} width={44} />
-                <Tooltip contentStyle={{ background: "#111827", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "#f8fafc", fontSize: 12 }} formatter={(v: number) => [`$${v.toLocaleString()}`, "Spend"]} />
+                <Tooltip contentStyle={{ background: "#111827", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "#f8fafc", fontSize: 12 }} formatter={(v: unknown) => [`$${(v as number).toLocaleString()}`, "Spend"]} />
                 <Area type="monotone" dataKey="v" name="Spend" stroke="#3b82f6" strokeWidth={2} fill="url(#aGrad)" />
               </AreaChart>
             </ResponsiveContainer>
@@ -240,7 +249,7 @@ export default function DashboardPage() {
                   <Pie data={categoryData} cx="50%" cy="50%" innerRadius={38} outerRadius={62} dataKey="amount" paddingAngle={2}>
                     {categoryData.map((_: unknown, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                   </Pie>
-                  <Tooltip contentStyle={{ background: "#111827", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "#f8fafc", fontSize: 12 }} formatter={(v: number) => [`$${v.toLocaleString()}`, ""]} />
+                  <Tooltip contentStyle={{ background: "#111827", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "#f8fafc", fontSize: 12 }} formatter={(v: unknown) => [`$${(v as number).toLocaleString()}`, ""]} />
                 </PieChart>
               </ResponsiveContainer>
               <div className="space-y-2 mt-1">
@@ -339,7 +348,7 @@ export default function DashboardPage() {
                       </div>
                       <span className="text-xs flex-shrink-0 font-mono" style={{ color: "var(--color-text-muted)" }}>{pct}%</span>
                     </div>
-                    {w.started_at && (
+                    {!!(w.started_at as string) && (
                       <div className="flex items-center gap-1 mt-1">
                         <Clock size={9} style={{ color: "var(--color-text-muted)" }} />
                         <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>

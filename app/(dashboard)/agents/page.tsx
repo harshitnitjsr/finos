@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Bot, Activity, Cpu, Zap, InboxIcon, Clock } from "lucide-react";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { apiFetch } from "@/lib/api";
 const cv = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.06 } } };
 const iv = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.35 } } };
 
@@ -20,14 +20,16 @@ const MODEL_LABELS: Record<string, string> = {
   "gpt-4o-mini": "GPT-4o Mini",
 };
 
+interface AgentsResponse {
+  agents: Record<string, unknown>[];
+  active: number;
+  total: number;
+}
+
 function useAgents() {
-  return useQuery({
+  return useQuery<AgentsResponse>({
     queryKey: ["agents-status"],
-    queryFn: async () => {
-      const r = await fetch(`${API}/api/v1/agents/status`);
-      if (!r.ok) throw new Error("Failed");
-      return r.json();
-    },
+    queryFn: () => apiFetch<AgentsResponse>("/agents/status"),
     refetchInterval: 15000,
   });
 }

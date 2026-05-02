@@ -191,7 +191,11 @@ def make_agent_node(agent_key: str):
 
     async def agent_node(state: AFOSState) -> dict:
         run_id = state.get("run_id", str(uuid.uuid4()))
-        org_id = state.get("org_id", "org_demo_001")
+        org_id = state.get("org_id")
+        
+        from app.core.context import org_id_var
+        org_id_var.set(org_id)
+
         agent_id = cfg["id"]
         agent_name = cfg["name"]
 

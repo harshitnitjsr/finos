@@ -10,9 +10,9 @@ from app.core.database import get_db
 from app.core.redis_client import cache, TTL_AGENT_STATUS
 from app.models.models import AgentLog, AgentToolLog
 
-router = APIRouter()
-ORG_ID = "org_demo_001"
+from app.api.deps import get_org_id
 
+router = APIRouter()
 # Agent registry — static config only, no hardcoded metrics
 AGENT_REGISTRY = [
     {"id": "invoice-agent",     "name": "Invoice Intelligence",  "model": "gpt-4o-mini", "task": "extraction"},
@@ -26,7 +26,7 @@ AGENT_REGISTRY = [
 ]
 
 
-async def _get_agent_db_stats(agent_id: str, db: AsyncSession) -> dict:
+async def _get_agent_db_stats(agent_id: str, org_id: str, db: AsyncSession) -> dict:
     """Pull actual invocation stats from agent_logs table for last 24h."""
     try:
         since = datetime.utcnow() - timedelta(hours=24)
@@ -37,7 +37,7 @@ async def _get_agent_db_stats(agent_id: str, db: AsyncSession) -> dict:
                 func.sum(AgentLog.tokens_used).label("total_tokens"),
             ).where(
                 AgentLog.agent_id == agent_id,
-                AgentLog.org_id == ORG_ID,
+                AgentLog.org_id == org_id,
                 AgentLog.created_at >= since,
             )
         )
@@ -54,12 +54,15 @@ async def _get_agent_db_stats(agent_id: str, db: AsyncSession) -> dict:
 # ── STATIC ROUTES (must come before any /{param} dynamic routes) ──────────────
 
 @router.get("/status")
-async def agents_status(db: AsyncSession = Depends(get_db)):
+async def agents_status(
+    org_id: str = Depends(get_org_id),
+    db: AsyncSession = Depends(get_db)
+):
     """
     Live status of all 8 AI agents.
     Heartbeat from Redis + activity stats from agent_logs DB table.
     """
-    cached = await cache.get("agent_status", ORG_ID)
+    cached = await cache.get("agent_status", org_id)
     if cached:
         return cached
 
@@ -67,7 +70,7 @@ async def agents_status(db: AsyncSession = Depends(get_db)):
     for agent_cfg in AGENT_REGISTRY:
         aid = agent_cfg["id"]
         heartbeat = await cache.get_agent_heartbeat(aid)
-        stats = await _get_agent_db_stats(aid, db)
+        stats = await _get_agent_db_stats(aid, org_id, db)
         agents_out.append({
             **agent_cfg,
             "status": "active" if heartbeat or stats["requests_24h"] > 0 else "idle",
@@ -81,12 +84,15 @@ async def agents_status(db: AsyncSession = Depends(get_db)):
         "active": sum(1 for a in agents_out if a["status"] in ("active", "idle")),
         "generated_at": datetime.utcnow().isoformat(),
     }
-    await cache.set("agent_status", response, TTL_AGENT_STATUS, ORG_ID)
+    await cache.set("agent_status", response, TTL_AGENT_STATUS, org_id)
     return response
 
 
 @router.get("/tool-logs/summary")
-async def get_tool_logs_summary(db: AsyncSession = Depends(get_db)):
+async def get_tool_logs_summary(
+    org_id: str = Depends(get_org_id),
+    db: AsyncSession = Depends(get_db)
+):
     """
     Aggregated tool usage summary: call counts, avg latency, success rate per tool.
     """
@@ -98,7 +104,7 @@ async def get_tool_logs_summary(db: AsyncSession = Depends(get_db)):
             func.avg(AgentToolLog.duration_ms).label("avg_ms"),
             func.sum(case((AgentToolLog.status == "success", 1), else_=0)).label("successes"),
         )
-        .where(AgentToolLog.org_id == ORG_ID)
+        .where(AgentToolLog.org_id == org_id)
         .group_by(AgentToolLog.tool_name, AgentToolLog.agent_name)
         .order_by(desc(func.count(AgentToolLog.id)))
     )
@@ -122,13 +128,14 @@ async def get_tool_logs(
     agent_id_filter: str = None,
     run_id: str = None,
     limit: int = 100,
+    org_id: str = Depends(get_org_id),
     db: AsyncSession = Depends(get_db),
 ):
     """
     Per-tool-call logs with full request + response JSON.
     Each entry shows: tool name, agent, input args, output data, duration_ms, status.
     """
-    q = select(AgentToolLog).where(AgentToolLog.org_id == ORG_ID)
+    q = select(AgentToolLog).where(AgentToolLog.org_id == org_id)
     if agent_id_filter:
         q = q.where(AgentToolLog.agent_id == agent_id_filter)
     if run_id:
@@ -164,18 +171,22 @@ async def get_tool_logs(
 # ── DYNAMIC ROUTES (/{param} — must come AFTER all static routes) ─────────────
 
 @router.get("/{agent_id}")
-async def get_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
+async def get_agent(
+    agent_id: str,
+    org_id: str = Depends(get_org_id),
+    db: AsyncSession = Depends(get_db)
+):
     """Get detailed profile + recent logs for one agent."""
     cfg = next((a for a in AGENT_REGISTRY if a["id"] == agent_id), None)
     if not cfg:
         raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
 
     heartbeat = await cache.get_agent_heartbeat(agent_id)
-    stats = await _get_agent_db_stats(agent_id, db)
+    stats = await _get_agent_db_stats(agent_id, org_id, db)
 
     logs_result = await db.execute(
         select(AgentLog)
-        .where(AgentLog.agent_id == agent_id, AgentLog.org_id == ORG_ID)
+        .where(AgentLog.agent_id == agent_id, AgentLog.org_id == org_id)
         .order_by(AgentLog.created_at.desc())
         .limit(10)
     )
@@ -201,11 +212,16 @@ async def get_agent(agent_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/{agent_id}/logs")
-async def get_agent_logs(agent_id: str, limit: int = 50, db: AsyncSession = Depends(get_db)):
+async def get_agent_logs(
+    agent_id: str,
+    limit: int = 50,
+    org_id: str = Depends(get_org_id),
+    db: AsyncSession = Depends(get_db)
+):
     """Paginated agent invocation logs for one agent."""
     result = await db.execute(
         select(AgentLog)
-        .where(AgentLog.agent_id == agent_id, AgentLog.org_id == ORG_ID)
+        .where(AgentLog.agent_id == agent_id, AgentLog.org_id == org_id)
         .order_by(AgentLog.created_at.desc())
         .limit(min(limit, 200))
     )

@@ -7,39 +7,34 @@ import {
   BarChart, Bar, PieChart, Pie, Cell,
 } from "recharts";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { apiFetch } from "@/lib/api";
 const cv = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.06 } } };
 const iv = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.35 } } };
 const COLORS = ["#3b82f6", "#10b981", "#8b5cf6", "#f59e0b", "#f43f5e", "#06b6d4", "#ec4899", "#84cc16"];
 
+interface TrendPoint { date: string; amount: number; currency: string; }
+interface TrendResp { data: TrendPoint[]; }
+interface CategoryPoint { category: string; total: number; currency: string; }
+interface CategoryResp { data: CategoryPoint[]; }
+interface VendorPoint { name: string; total: number; currency: string; }
+interface VendorResp { data: VendorPoint[]; }
+
 function useTrend(days: number) {
-  return useQuery({
+  return useQuery<TrendResp>({
     queryKey: ["spend-trend", days],
-    queryFn: async () => {
-      const r = await fetch(`${API}/api/v1/analytics/spend-trend?days=${days}`);
-      if (!r.ok) throw new Error("Failed");
-      return r.json();
-    },
+    queryFn: () => apiFetch<TrendResp>(`/analytics/spend-trend?days=${days}`),
   });
 }
 function useCategories(days: number) {
-  return useQuery({
+  return useQuery<CategoryResp>({
     queryKey: ["category-breakdown", days],
-    queryFn: async () => {
-      const r = await fetch(`${API}/api/v1/analytics/category-breakdown?days=${days}`);
-      if (!r.ok) throw new Error("Failed");
-      return r.json();
-    },
+    queryFn: () => apiFetch<CategoryResp>(`/analytics/category-breakdown?days=${days}`),
   });
 }
 function useVendors(days: number) {
-  return useQuery({
+  return useQuery<VendorResp>({
     queryKey: ["vendor-breakdown", days],
-    queryFn: async () => {
-      const r = await fetch(`${API}/api/v1/analytics/vendor-breakdown?days=${days}`);
-      if (!r.ok) throw new Error("Failed");
-      return r.json();
-    },
+    queryFn: () => apiFetch<VendorResp>(`/analytics/vendor-breakdown?days=${days}`),
   });
 }
 
@@ -105,7 +100,7 @@ export default function AnalyticsPage() {
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                 <XAxis dataKey="date" tick={{ fill: "#475569", fontSize: 11 }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: "#475569", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `$${(v / 1000).toFixed(0)}K`} />
-                <Tooltip contentStyle={{ background: "#111827", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#f8fafc" }} formatter={(v: number) => [`$${v.toLocaleString()}`, ""]} />
+                <Tooltip contentStyle={{ background: "#111827", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#f8fafc" }} formatter={(v: unknown) => [`$${(v as number).toLocaleString()}`, ""]} />
                 <Area type="monotone" dataKey="actual" stroke="#3b82f6" strokeWidth={2} fill="url(#trendGrad)" />
               </AreaChart>
             </ResponsiveContainer>
@@ -130,7 +125,7 @@ export default function AnalyticsPage() {
                     <Pie data={categoryData} cx="50%" cy="50%" innerRadius={60} outerRadius={90} dataKey="total" paddingAngle={2}>
                       {categoryData.map((_: unknown, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                     </Pie>
-                    <Tooltip contentStyle={{ background: "#111827", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#f8fafc" }} formatter={(v: number) => [`$${v.toLocaleString()}`, ""]} />
+                    <Tooltip contentStyle={{ background: "#111827", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#f8fafc" }} formatter={(v: unknown) => [`$${(v as number).toLocaleString()}`, ""]} />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
@@ -173,7 +168,7 @@ export default function AnalyticsPage() {
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                 <XAxis dataKey="name" tick={{ fill: "#475569", fontSize: 11 }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: "#475569", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `$${(v / 1000).toFixed(0)}K`} />
-                <Tooltip contentStyle={{ background: "#111827", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#f8fafc" }} cursor={{ fill: "rgba(255,255,255,0.05)" }} formatter={(v: number) => [`$${v.toLocaleString()}`, ""]} />
+                <Tooltip contentStyle={{ background: "#111827", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#f8fafc" }} cursor={{ fill: "rgba(255,255,255,0.05)" }} formatter={(v: unknown) => [`$${(v as number).toLocaleString()}`, ""]} />
                 <Bar dataKey="total" fill="#8b5cf6" radius={[4, 4, 0, 0]} barSize={36} />
               </BarChart>
             </ResponsiveContainer>

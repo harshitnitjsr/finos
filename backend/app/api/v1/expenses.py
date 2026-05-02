@@ -13,9 +13,9 @@ from app.core.vector_store import vector_store
 from app.core.model_router import model_router
 from app.models.models import Expense
 from app.agents.expense_agent import expense_agent
+from app.api.deps import get_org_id
 
 router = APIRouter()
-ORG_ID = "org_demo_001"
 
 
 class ExpenseCreate(BaseModel):
@@ -102,11 +102,12 @@ async def categorize_expense_background(expense_id: str):
 async def create_expense(
     expense_in: ExpenseCreate,
     background_tasks: BackgroundTasks,
+    org_id: str = Depends(get_org_id),
     db: AsyncSession = Depends(get_db),
 ):
     """Create expense and trigger AI categorization."""
     expense = Expense(
-        org_id=ORG_ID,
+        org_id=org_id,
         description=expense_in.description,
         amount=expense_in.amount,
         currency=expense_in.currency,
@@ -131,25 +132,26 @@ async def list_expenses(
     is_anomaly: Optional[bool] = None,
     skip: int = 0,
     limit: int = Query(100, ge=1, le=500),
+    org_id: str = Depends(get_org_id),
     db: AsyncSession = Depends(get_db),
 ):
-    cache_key = f"{ORG_ID}:{status}:{category}:{is_anomaly}:{skip}:{limit}"
+    cache_key = f"{org_id}:{status}:{category}:{is_anomaly}:{skip}:{limit}"
     cached = await cache.get("expenses", cache_key)
     if cached:
         return cached
 
-    query = select(Expense).where(Expense.org_id == ORG_ID).order_by(desc(Expense.transaction_date))
+    q = select(Expense).where(Expense.org_id == org_id).order_by(desc(Expense.transaction_date))
     if status:
-        query = query.where(Expense.status == status)
+        q = q.where(Expense.status == status)
     if category:
-        query = query.where(Expense.category == category)
+        q = q.where(Expense.category == category)
     if is_anomaly is not None:
-        query = query.where(Expense.is_anomaly == is_anomaly)
-    query = query.offset(skip).limit(limit)
-    result = await db.execute(query)
+        q = q.where(Expense.is_anomaly == is_anomaly)
+    q = q.offset(skip).limit(limit)
+    result = await db.execute(q)
     expenses = result.scalars().all()
 
-    total_q = select(func.count(Expense.id)).where(Expense.org_id == ORG_ID)
+    total_q = select(func.count(Expense.id)).where(Expense.org_id == org_id)
     total = (await db.execute(total_q)).scalar_one_or_none() or 0
 
     response = {"expenses": [_expense_to_dict(e) for e in expenses], "total": total}
@@ -158,24 +160,30 @@ async def list_expenses(
 
 
 @router.get("/analytics/by-category")
-async def expenses_by_category(db: AsyncSession = Depends(get_db)):
+async def expenses_by_category(
+    org_id: str = Depends(get_org_id),
+    db: AsyncSession = Depends(get_db),
+):
     result = await db.execute(
         select(
             Expense.category,
             Expense.currency,
             func.sum(Expense.amount).label("total"),
             func.count(Expense.id).label("count"),
-        ).where(Expense.org_id == ORG_ID).group_by(Expense.category, Expense.currency)
+        ).where(Expense.org_id == org_id).group_by(Expense.category, Expense.currency)
     )
     rows = result.all()
     return {"data": [{"category": r.category or "Uncategorized", "currency": r.currency, "total": float(r.total or 0), "count": r.count} for r in rows]}
 
 
 @router.get("/analytics/anomalies")
-async def get_anomalies(db: AsyncSession = Depends(get_db)):
+async def get_anomalies(
+    org_id: str = Depends(get_org_id),
+    db: AsyncSession = Depends(get_db),
+):
     result = await db.execute(
         select(Expense).where(
-            Expense.org_id == ORG_ID,
+            Expense.org_id == org_id,
             Expense.is_anomaly == True
         ).order_by(desc(Expense.anomaly_score)).limit(20)
     )

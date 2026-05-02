@@ -38,7 +38,8 @@ async def query_invoices(status: Optional[str] = None, days: int = 60, limit: in
     from app.core.database import AsyncSessionLocal
     from app.models.models import Invoice, Vendor
     from sqlalchemy import select, desc
-    ORG_ID = "org_demo_001"
+    from app.core.context import org_id_var
+    ORG_ID = org_id_var.get()
 
     async with AsyncSessionLocal() as db:
         since = datetime.utcnow() - timedelta(days=days)
@@ -85,7 +86,8 @@ async def get_overdue_invoices(include_high_risk: bool = True) -> dict:
     from app.core.database import AsyncSessionLocal
     from app.models.models import Invoice, Vendor
     from sqlalchemy import select, or_, desc
-    ORG_ID = "org_demo_001"
+    from app.core.context import org_id_var
+    ORG_ID = org_id_var.get()
 
     now = datetime.utcnow()
     week_ahead = now + timedelta(days=7)
@@ -140,7 +142,8 @@ async def get_invoice_pipeline_summary(status: Optional[str] = None, days: int =
     from app.core.database import AsyncSessionLocal
     from app.models.models import Invoice
     from sqlalchemy import select, func
-    ORG_ID = "org_demo_001"
+    from app.core.context import org_id_var
+    ORG_ID = org_id_var.get()
 
     async with AsyncSessionLocal() as db:
         result = await db.execute(
@@ -176,7 +179,8 @@ async def get_vendor_invoice_history(vendor_name: str, limit: int = 10) -> dict:
     from app.core.database import AsyncSessionLocal
     from app.models.models import Invoice, Vendor
     from sqlalchemy import select, desc
-    ORG_ID = "org_demo_001"
+    from app.core.context import org_id_var
+    ORG_ID = org_id_var.get()
 
     async with AsyncSessionLocal() as db:
         # Find vendor

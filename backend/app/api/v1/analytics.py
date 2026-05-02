@@ -6,9 +6,9 @@ from sqlalchemy import select, func, desc, literal_column, text
 from app.core.database import get_db
 from app.core.redis_client import cache, TTL_DASHBOARD, TTL_ANALYTICS
 from app.models.models import Invoice, Expense, Approval, Vendor, Workflow
+from app.api.deps import get_org_id
 
 router = APIRouter()
-ORG_ID = "org_demo_001"
 
 CURRENCIES = {
     "USD": {"symbol": "$", "rate": 1.0},
@@ -20,9 +20,12 @@ CURRENCIES = {
 
 
 @router.get("/dashboard")
-async def dashboard_metrics(db: AsyncSession = Depends(get_db)):
+async def dashboard_metrics(
+    org_id: str = Depends(get_org_id),
+    db: AsyncSession = Depends(get_db),
+):
     """Core dashboard KPIs — cached 30s."""
-    cached = await cache.get("dashboard", ORG_ID)
+    cached = await cache.get("dashboard", org_id)
     if cached:
         return cached
 
@@ -37,14 +40,14 @@ async def dashboard_metrics(db: AsyncSession = Depends(get_db)):
             func.count(Invoice.id).label("total"),
             func.sum(Invoice.total_amount).label("total_value"),
             Invoice.currency,
-        ).where(Invoice.org_id == ORG_ID).group_by(Invoice.currency)
+        ).where(Invoice.org_id == org_id).group_by(Invoice.currency)
     )
     invoice_stats = inv_result.all()
 
     # Pending approvals
     appr_result = await db.execute(
         select(func.count(Approval.id)).where(
-            Approval.org_id == ORG_ID, Approval.status == "pending"
+            Approval.org_id == org_id, Approval.status == "pending"
         )
     )
     pending_approvals = appr_result.scalar_one_or_none() or 0
@@ -55,7 +58,7 @@ async def dashboard_metrics(db: AsyncSession = Depends(get_db)):
             func.sum(Expense.amount).label("total"),
             Expense.currency,
         ).where(
-            Expense.org_id == ORG_ID,
+            Expense.org_id == org_id,
             Expense.transaction_date >= thirty_days_ago,
         ).group_by(Expense.currency)
     )
@@ -65,7 +68,7 @@ async def dashboard_metrics(db: AsyncSession = Depends(get_db)):
     prev_result = await db.execute(
         select(func.sum(Expense.amount).label("total"), Expense.currency)
         .where(
-            Expense.org_id == ORG_ID,
+            Expense.org_id == org_id,
             Expense.transaction_date >= prev_thirty,
             Expense.transaction_date < thirty_days_ago,
         ).group_by(Expense.currency)
@@ -75,14 +78,14 @@ async def dashboard_metrics(db: AsyncSession = Depends(get_db)):
     # Anomalies
     anomaly_result = await db.execute(
         select(func.count(Expense.id)).where(
-            Expense.org_id == ORG_ID,
+            Expense.org_id == org_id,
             Expense.is_anomaly == True,
             Expense.transaction_date >= thirty_days_ago,
         )
     )
     anomaly_count = anomaly_result.scalar_one_or_none() or 0
 
-    # 30-day daily expense trend — raw SQL avoids asyncpg parametrizing 'day' in date_trunc
+    # 30-day daily expense trend
     from sqlalchemy import text as sa_text
     trend_stmt = sa_text("""
         SELECT date_trunc('day', transaction_date) AS day,
@@ -94,7 +97,7 @@ async def dashboard_metrics(db: AsyncSession = Depends(get_db)):
         GROUP BY date_trunc('day', transaction_date), currency
         ORDER BY date_trunc('day', transaction_date)
     """)
-    trend_result = await db.execute(trend_stmt, {"org_id": ORG_ID, "since": thirty_days_ago})
+    trend_result = await db.execute(trend_stmt, {"org_id": org_id, "since": thirty_days_ago})
     trend_data = trend_result.all()
 
     # Category breakdown (90 days)
@@ -104,7 +107,7 @@ async def dashboard_metrics(db: AsyncSession = Depends(get_db)):
             func.sum(Expense.amount).label("total"),
             Expense.currency,
         ).where(
-            Expense.org_id == ORG_ID,
+            Expense.org_id == org_id,
             Expense.category.isnot(None),
             Expense.transaction_date >= ninety_days_ago,
         ).group_by(Expense.category, Expense.currency)
@@ -116,7 +119,7 @@ async def dashboard_metrics(db: AsyncSession = Depends(get_db)):
     # Active workflows
     wf_result = await db.execute(
         select(func.count(Workflow.id)).where(
-            Workflow.org_id == ORG_ID,
+            Workflow.org_id == org_id,
             Workflow.status.in_(["running", "pending"]),
         )
     )
@@ -125,7 +128,7 @@ async def dashboard_metrics(db: AsyncSession = Depends(get_db)):
     # Invoices by status
     inv_status_result = await db.execute(
         select(Invoice.status, func.count(Invoice.id).label("count"))
-        .where(Invoice.org_id == ORG_ID)
+        .where(Invoice.org_id == org_id)
         .group_by(Invoice.status)
     )
     invoice_by_status = {r.status: r.count for r in inv_status_result.all()}
@@ -137,7 +140,7 @@ async def dashboard_metrics(db: AsyncSession = Depends(get_db)):
             func.sum(Expense.amount).label("total"),
             Expense.currency,
         ).where(
-            Expense.org_id == ORG_ID,
+            Expense.org_id == org_id,
             Expense.vendor_name.isnot(None),
             Expense.transaction_date >= thirty_days_ago,
         ).group_by(Expense.vendor_name, Expense.currency)
@@ -204,14 +207,18 @@ async def dashboard_metrics(db: AsyncSession = Depends(get_db)):
         "generated_at": now.isoformat(),
     }
 
-    await cache.set("dashboard", response, TTL_DASHBOARD, ORG_ID)
+    await cache.set("dashboard", response, TTL_DASHBOARD, org_id)
     return response
 
 
 @router.get("/spend-trend")
-async def spend_trend(days: int = Query(30, ge=7, le=365), db: AsyncSession = Depends(get_db)):
+async def spend_trend(
+    days: int = Query(30, ge=7, le=365),
+    org_id: str = Depends(get_org_id),
+    db: AsyncSession = Depends(get_db),
+):
     """Daily spend trend. Cached 120s."""
-    cache_key = f"{ORG_ID}:{days}"
+    cache_key = f"{org_id}:{days}"
     cached = await cache.get("spend_trend", cache_key)
     if cached:
         return cached
@@ -223,7 +230,7 @@ async def spend_trend(days: int = Query(30, ge=7, le=365), db: AsyncSession = De
             func.sum(Expense.amount).label("total"),
             Expense.currency,
         ).where(
-            Expense.org_id == ORG_ID,
+            Expense.org_id == org_id,
             Expense.transaction_date >= since,
         ).group_by("day", Expense.currency)
         .order_by("day")
@@ -238,9 +245,13 @@ async def spend_trend(days: int = Query(30, ge=7, le=365), db: AsyncSession = De
 
 
 @router.get("/vendor-breakdown")
-async def vendor_breakdown(days: int = Query(90, ge=7, le=365), db: AsyncSession = Depends(get_db)):
+async def vendor_breakdown(
+    days: int = Query(90, ge=7, le=365),
+    org_id: str = Depends(get_org_id),
+    db: AsyncSession = Depends(get_db),
+):
     """Top vendor spend breakdown. Cached 120s."""
-    cache_key = f"{ORG_ID}:{days}"
+    cache_key = f"{org_id}:{days}"
     cached = await cache.get("vendor_breakdown", cache_key)
     if cached:
         return cached
@@ -253,7 +264,7 @@ async def vendor_breakdown(days: int = Query(90, ge=7, le=365), db: AsyncSession
             Expense.currency,
             func.count(Expense.id).label("transactions"),
         ).where(
-            Expense.org_id == ORG_ID,
+            Expense.org_id == org_id,
             Expense.vendor_name.isnot(None),
             Expense.transaction_date >= since,
         ).group_by(Expense.vendor_name, Expense.currency)
@@ -275,9 +286,13 @@ async def vendor_breakdown(days: int = Query(90, ge=7, le=365), db: AsyncSession
 
 
 @router.get("/category-breakdown")
-async def category_breakdown(days: int = Query(90, ge=7, le=365), db: AsyncSession = Depends(get_db)):
+async def category_breakdown(
+    days: int = Query(90, ge=7, le=365),
+    org_id: str = Depends(get_org_id),
+    db: AsyncSession = Depends(get_db),
+):
     """Expense category breakdown. Cached 120s."""
-    cache_key = f"{ORG_ID}:{days}"
+    cache_key = f"{org_id}:{days}"
     cached = await cache.get("category_breakdown", cache_key)
     if cached:
         return cached
@@ -291,7 +306,7 @@ async def category_breakdown(days: int = Query(90, ge=7, le=365), db: AsyncSessi
             func.count(Expense.id).label("count"),
             func.avg(Expense.amount).label("avg"),
         ).where(
-            Expense.org_id == ORG_ID,
+            Expense.org_id == org_id,
             Expense.category.isnot(None),
             Expense.transaction_date >= since,
         ).group_by(Expense.category, Expense.currency)

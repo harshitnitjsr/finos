@@ -4,41 +4,35 @@ import { motion } from "framer-motion";
 import { Landmark, TrendingDown, Calendar, InboxIcon, AlertCircle } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from "recharts";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { apiFetch } from "@/lib/api";
 const cv = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.06 } } };
 const iv = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.35 } } };
 const CURRENCY_SYMBOLS: Record<string, string> = { USD: "$", INR: "₹", EUR: "€", GBP: "£", JPY: "¥" };
 
+interface CashPosition { currency: string; account: string; current_balance: number; outflow: number; }
+interface BurnItem { currency: string; amount: number; }
+interface TreasuryResp { upcoming_payments: Record<string, unknown>[]; monthly_burn: BurnItem[]; runway_days?: number; monthly_history_usd: { month: string; spend: number }[]; }
+interface PositionResp { positions: CashPosition[]; }
+interface ForecastResp { cash_flow_forecast: { month: string; inflow: number; outflow: number; net: number }[]; confidence?: number; }
+
 function useTreasury() {
-  return useQuery({
+  return useQuery<TreasuryResp>({
     queryKey: ["treasury-summary"],
-    queryFn: async () => {
-      const r = await fetch(`${API}/api/v1/treasury/summary`);
-      if (!r.ok) throw new Error("Failed");
-      return r.json();
-    },
+    queryFn: () => apiFetch<TreasuryResp>("/treasury/summary"),
     refetchInterval: 60000,
   });
 }
 function useCashPosition() {
-  return useQuery({
+  return useQuery<PositionResp>({
     queryKey: ["cash-position"],
-    queryFn: async () => {
-      const r = await fetch(`${API}/api/v1/treasury/cash-position`);
-      if (!r.ok) throw new Error("Failed");
-      return r.json();
-    },
+    queryFn: () => apiFetch<PositionResp>("/treasury/cash-position"),
     refetchInterval: 60000,
   });
 }
 function useForecast() {
-  return useQuery({
+  return useQuery<ForecastResp>({
     queryKey: ["treasury-forecast"],
-    queryFn: async () => {
-      const r = await fetch(`${API}/api/v1/treasury/forecast`);
-      if (!r.ok) throw new Error("Failed");
-      return r.json();
-    },
+    queryFn: () => apiFetch<ForecastResp>("/treasury/forecast"),
     staleTime: 5 * 60 * 1000,
     retry: false,
   });
@@ -49,11 +43,11 @@ export default function TreasuryPage() {
   const { data: position, isLoading: positionLoading } = useCashPosition();
   const { data: forecast } = useForecast();
 
-  const upcomingPayments: Record<string, unknown>[] = summary?.upcoming_payments || [];
-  const monthlyBurn: { currency: string; amount: number }[] = summary?.monthly_burn || [];
-  const positions: Record<string, unknown>[] = position?.positions || [];
-  const forecastData: { month: string; inflow: number; outflow: number; net: number }[] = forecast?.cash_flow_forecast || [];
-  const historyData: { month: string; spend: number }[] = summary?.monthly_history_usd || [];
+  const upcomingPayments = summary?.upcoming_payments || [];
+  const monthlyBurn: BurnItem[] = summary?.monthly_burn || [];
+  const positions: CashPosition[] = position?.positions || [];
+  const forecastData = forecast?.cash_flow_forecast || [];
+  const historyData = summary?.monthly_history_usd || [];
 
   return (
     <motion.div variants={cv} initial="hidden" animate="show" className="space-y-6">
@@ -149,7 +143,7 @@ export default function TreasuryPage() {
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                 <XAxis dataKey="month" tick={{ fill: "#475569", fontSize: 11 }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: "#475569", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `$${(v / 1000).toFixed(0)}K`} />
-                <Tooltip contentStyle={{ background: "#111827", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#f8fafc" }} formatter={(v: number) => [`$${v.toLocaleString()}`, ""]} />
+                <Tooltip contentStyle={{ background: "#111827", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#f8fafc" }} formatter={(v: unknown) => [`$${(v as number).toLocaleString()}`, ""]} />
                 <Bar dataKey="spend" fill="#3b82f6" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -180,7 +174,7 @@ export default function TreasuryPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
               <XAxis dataKey="month" tick={{ fill: "#475569", fontSize: 11 }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fill: "#475569", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `$${(v / 1000).toFixed(0)}K`} />
-              <Tooltip contentStyle={{ background: "#111827", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#f8fafc" }} formatter={(v: number) => [`$${v.toLocaleString()}`, ""]} />
+              <Tooltip contentStyle={{ background: "#111827", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#f8fafc" }} formatter={(v: unknown) => [`$${(v as number).toLocaleString()}`, ""]} />
               <Area type="monotone" dataKey="inflow" name="Inflow" stroke="#10b981" strokeWidth={2} fill="url(#inGrad)" />
               <Area type="monotone" dataKey="outflow" name="Outflow" stroke="#f43f5e" strokeWidth={2} fill="url(#outGrad)" />
             </AreaChart>

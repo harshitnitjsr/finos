@@ -8,42 +8,36 @@ import {
   ScatterChart, Scatter, ZAxis,
 } from "recharts";
 
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { apiFetch } from "@/lib/api";
 const cv = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.06 } } };
 const iv = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.35 } } };
 const CURRENCY_SYMBOLS: Record<string, string> = { USD: "$", INR: "₹", EUR: "€", GBP: "£", JPY: "¥" };
 
+interface ExpenseItem { id: string; description: string; amount: number; currency: string; category: string; department?: string; vendor_name?: string; status: string; is_anomaly?: boolean; is_recurring?: boolean; anomaly_reason?: string; }
+interface ExpensesResp { expenses: ExpenseItem[]; total: number; }
+interface CategoryItem { category: string; currency: string; total: number; count: number; }
+interface CategoryResp { data: CategoryItem[]; }
+interface AnomalyResp { anomalies: ExpenseItem[]; }
+
 function useExpenses(params: Record<string, string | boolean | undefined>) {
   const searchParams = new URLSearchParams();
   Object.entries(params).forEach(([k, v]) => { if (v != null) searchParams.set(k, String(v)); });
-  return useQuery({
+  return useQuery<ExpensesResp>({
     queryKey: ["expenses", params],
-    queryFn: async () => {
-      const r = await fetch(`${API}/api/v1/expenses/?${searchParams}`);
-      if (!r.ok) throw new Error("Failed");
-      return r.json();
-    },
+    queryFn: () => apiFetch<ExpensesResp>(`/expenses/?${searchParams}`),
     refetchInterval: 30000,
   });
 }
 function useCategories() {
-  return useQuery({
+  return useQuery<CategoryResp>({
     queryKey: ["expense-categories"],
-    queryFn: async () => {
-      const r = await fetch(`${API}/api/v1/expenses/analytics/by-category`);
-      if (!r.ok) throw new Error("Failed");
-      return r.json();
-    },
+    queryFn: () => apiFetch<CategoryResp>("/expenses/analytics/by-category"),
   });
 }
 function useAnomalies() {
-  return useQuery({
+  return useQuery<AnomalyResp>({
     queryKey: ["anomalies"],
-    queryFn: async () => {
-      const r = await fetch(`${API}/api/v1/expenses/analytics/anomalies`);
-      if (!r.ok) throw new Error("Failed");
-      return r.json();
-    },
+    queryFn: () => apiFetch<AnomalyResp>("/expenses/analytics/anomalies"),
     refetchInterval: 30000,
   });
 }
@@ -55,9 +49,9 @@ export default function ExpensesPage() {
   const { data: categoryData } = useCategories();
   const { data: anomalyData } = useAnomalies();
 
-  const expenses: Record<string, unknown>[] = allData?.expenses || [];
-  const anomalies: Record<string, unknown>[] = anomalyData?.anomalies || [];
-  const categories: { category: string; currency: string; total: number; count: number }[] = categoryData?.data || [];
+  const expenses: ExpenseItem[] = allData?.expenses || [];
+  const anomalies: ExpenseItem[] = anomalyData?.anomalies || [];
+  const categories: CategoryItem[] = categoryData?.data || [];
 
   // Filter based on tab
   const displayed = activeTab === "anomalies"
@@ -122,7 +116,7 @@ export default function ExpensesPage() {
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" horizontal={false} />
               <XAxis type="number" tick={{ fill: "#475569", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `$${(v / 1000).toFixed(0)}K`} />
               <YAxis type="category" dataKey="category" tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={false} tickLine={false} width={140} />
-              <Tooltip contentStyle={{ background: "#111827", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#f8fafc" }} formatter={(v: number) => [`$${v.toLocaleString()}`, ""]} />
+              <Tooltip contentStyle={{ background: "#111827", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#f8fafc" }} formatter={(v: unknown) => [`$${(v as number).toLocaleString()}`, ""]} />
               <Bar dataKey="total" fill="#10b981" radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
