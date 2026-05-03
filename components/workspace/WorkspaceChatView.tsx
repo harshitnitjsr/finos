@@ -10,13 +10,13 @@ import type { WorkspaceMessage, WorkspaceChat } from "./hooks/useWorkspace";
 
 const AGENT_COLORS: Record<string, string> = {
   "Expense Intelligence": "#10b981",
-  "Invoice Intelligence": "#3b82f6",
+  "Invoice Intelligence": "#059669",
   "Compliance Agent":     "#f43f5e",
-  "Insight Agent":        "#8b5cf6",
+  "Insight Agent":        "#84cc16",
   "Treasury Agent":       "#f59e0b",
   "Vendor Intelligence":  "#06b6d4",
   "Approval Agent":       "#ec4899",
-  "Forecasting Agent":    "#6366f1",
+  "Forecasting Agent":    "#10b981",
 };
 
 const SUGGESTED_PROMPTS = [
@@ -49,33 +49,9 @@ function EmptyState({ onPrompt }: { onPrompt: (text: string) => void }) {
   return (
     <div className="flex flex-col items-center justify-center h-full py-16 px-6">
       {/* Hero icon */}
-      <motion.div
-        initial={{ scale: 0.8, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ duration: 0.5, ease: "easeOut" }}
-        className="relative mb-6"
-      >
-        <div
-          className="w-20 h-20 rounded-3xl flex items-center justify-center"
-          style={{
-            background: "linear-gradient(135deg, rgba(59,130,246,0.15), rgba(139,92,246,0.15))",
-            border: "1px solid rgba(59,130,246,0.2)",
-            boxShadow: "0 0 60px rgba(59,130,246,0.08)",
-          }}
-        >
-          <Activity size={32} className="text-blue-400" />
-        </div>
-        <motion.div
-          className="absolute -top-1 -right-1 w-6 h-6 rounded-full flex items-center justify-center"
-          style={{ background: "linear-gradient(135deg, #f59e0b, #f97316)" }}
-          animate={{ scale: [1, 1.15, 1] }}
-          transition={{ duration: 2, repeat: Infinity }}
-        >
-          <Sparkles size={11} className="text-white" />
-        </motion.div>
-      </motion.div>
 
-      <motion.div
+
+      {/* <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.1 }}
@@ -87,29 +63,9 @@ function EmptyState({ onPrompt }: { onPrompt: (text: string) => void }) {
         <p className="text-sm leading-relaxed max-w-sm" style={{ color: "var(--color-text-muted)" }}>
           Your intelligent financial co-pilot. Ask anything about expenses, invoices, vendors, treasury, compliance, and more.
         </p>
-      </motion.div>
+      </motion.div> */}
 
       {/* Agent badges */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.2 }}
-        className="flex flex-wrap gap-1.5 justify-center mb-8 max-w-md"
-      >
-        {Object.entries(AGENT_COLORS).map(([name, color]) => (
-          <span
-            key={name}
-            className="text-xs px-2.5 py-1 rounded-lg font-medium"
-            style={{
-              background: `${color}14`,
-              border: `1px solid ${color}28`,
-              color,
-            }}
-          >
-            {name}
-          </span>
-        ))}
-      </motion.div>
 
       {/* Suggested prompts */}
       <motion.div
@@ -129,7 +85,7 @@ function EmptyState({ onPrompt }: { onPrompt: (text: string) => void }) {
             <motion.button
               key={i}
               onClick={() => onPrompt(p.text)}
-              whileHover={{ scale: 1.02, borderColor: "rgba(59,130,246,0.3)" }}
+              whileHover={{ scale: 1.02, borderColor: "rgba(16,185,129,0.3)" }}
               whileTap={{ scale: 0.98 }}
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}

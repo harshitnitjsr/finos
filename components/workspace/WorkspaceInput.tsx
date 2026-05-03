@@ -67,9 +67,9 @@ export default function WorkspaceInput({
         className="relative rounded-2xl transition-all duration-200"
         style={{
           background: "rgba(255,255,255,0.03)",
-          border: `1px solid ${value ? "rgba(59,130,246,0.3)" : "rgba(255,255,255,0.08)"}`,
+          border: `1px solid ${value ? "rgba(16,185,129,0.3)" : "rgba(255,255,255,0.08)"}`,
           boxShadow: value
-            ? "0 0 0 3px rgba(59,130,246,0.06), 0 4px 24px rgba(0,0,0,0.3)"
+            ? "0 0 0 3px rgba(16,185,129,0.06), 0 4px 24px rgba(0,0,0,0.3)"
             : "0 4px 24px rgba(0,0,0,0.2)",
         }}
       >
@@ -152,10 +152,10 @@ export default function WorkspaceInput({
                 className="w-9 h-9 rounded-xl flex items-center justify-center transition-all disabled:opacity-30"
                 style={{
                   background: value.trim() && !disabled
-                    ? "linear-gradient(135deg, #3b82f6, #8b5cf6)"
+                    ? "linear-gradient(135deg, #10b981, #84cc16)"
                     : "rgba(255,255,255,0.06)",
                   boxShadow: value.trim() && !disabled
-                    ? "0 4px 16px rgba(59,130,246,0.3)"
+                    ? "0 4px 16px rgba(16,185,129,0.3)"
                     : "none",
                 }}
                 title="Send message (Enter)"

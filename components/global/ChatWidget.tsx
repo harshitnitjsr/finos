@@ -32,13 +32,13 @@ interface Message {
 
 const AGENT_COLORS: Record<string, string> = {
   "Expense Intelligence": "#10b981",
-  "Invoice Intelligence": "#3b82f6",
+  "Invoice Intelligence": "#059669",
   "Compliance Agent":     "#f43f5e",
-  "Insight Agent":        "#8b5cf6",
+  "Insight Agent":        "#84cc16",
   "Treasury Agent":       "#f59e0b",
   "Vendor Intelligence":  "#06b6d4",
   "Approval Agent":       "#ec4899",
-  "Forecasting Agent":    "#6366f1",
+  "Forecasting Agent":    "#10b981",
 };
 
 const TOOL_ICONS: Record<string, string> = {
@@ -84,7 +84,7 @@ function TypingDots() {
       {[0, 1, 2].map((i) => (
         <motion.div
           key={i}
-          className="w-2 h-2 rounded-full bg-blue-400"
+          className="w-2 h-2 rounded-full bg-emerald-400"
           animate={{ opacity: [0.3, 1, 0.3], y: [0, -4, 0] }}
           transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
         />
@@ -122,8 +122,8 @@ function ToolCallsSection({ toolCalls }: { toolCalls: ToolCall[] }) {
                 key={i}
                 className="flex items-start gap-2 px-2.5 py-2 rounded-lg"
                 style={{
-                  background: "rgba(59,130,246,0.04)",
-                  border: "1px solid rgba(59,130,246,0.1)",
+                  background: "rgba(16,185,129,0.04)",
+                  border: "1px solid rgba(16,185,129,0.1)",
                 }}
               >
                 <span className="text-sm flex-shrink-0 mt-0.5">
@@ -131,7 +131,7 @@ function ToolCallsSection({ toolCalls }: { toolCalls: ToolCall[] }) {
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-mono font-semibold text-blue-300">
+                    <span className="text-xs font-mono font-semibold text-emerald-300">
                       {tc.tool}
                     </span>
                     <CheckCircle2 size={9} className="text-emerald-400 flex-shrink-0" />
@@ -197,9 +197,9 @@ function MessageBubble({ msg }: { msg: Message }) {
         className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
         style={{
           background: isUser
-            ? "linear-gradient(135deg, #2563eb, #1d4ed8)"
-            : `rgba(${isUser ? "59,130,246" : "139,92,246"},0.12)`,
-          border: !isUser ? `1px solid rgba(139,92,246,0.25)` : "none",
+            ? "linear-gradient(135deg, #059669, #10b981)"
+            : `rgba(${isUser ? "16,185,129" : "132,204,22"},0.12)`,
+          border: !isUser ? `1px solid rgba(132,204,22,0.25)` : "none",
         }}
       >
         {isUser
@@ -233,7 +233,7 @@ function MessageBubble({ msg }: { msg: Message }) {
           className="px-3.5 py-2.5 rounded-2xl text-xs leading-relaxed"
           style={{
             background: isUser
-              ? "linear-gradient(135deg, #2563eb, #1d4ed8)"
+              ? "linear-gradient(135deg, #059669, #10b981)"
               : "rgba(255,255,255,0.04)",
             border: !isUser ? "1px solid rgba(255,255,255,0.06)" : "none",
             color: isUser ? "#fff" : "var(--color-text-secondary)",
@@ -448,10 +448,10 @@ export default function ChatWidget() {
         onClick={() => { setOpen((o) => !o); setUnread(0); }}
         className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-2xl flex items-center justify-center"
         style={{
-          background: "linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)",
-          boxShadow: "0 8px 32px rgba(59,130,246,0.4), 0 0 0 1px rgba(255,255,255,0.08)",
+          background: "linear-gradient(135deg, #10b981 0%, #84cc16 100%)",
+          boxShadow: "0 8px 32px rgba(16,185,129,0.4), 0 0 0 1px rgba(255,255,255,0.08)",
         }}
-        whileHover={{ scale: 1.08, boxShadow: "0 12px 40px rgba(59,130,246,0.5)" }}
+        whileHover={{ scale: 1.08, boxShadow: "0 12px 40px rgba(16,185,129,0.5)" }}
         whileTap={{ scale: 0.95 }}
         title="Open Orqentra AI Chat"
       >
@@ -483,7 +483,7 @@ export default function ChatWidget() {
               height: 600,
               background: "rgba(9,12,24,0.98)",
               backdropFilter: "blur(32px)",
-              border: "1px solid rgba(59,130,246,0.2)",
+              border: "1px solid rgba(16,185,129,0.2)",
               boxShadow: "0 32px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.03)",
             }}
           >
@@ -496,7 +496,7 @@ export default function ChatWidget() {
               }}
             >
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #3b82f6, #8b5cf6)" }}>
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #10b981, #84cc16)" }}>
                   <Bot size={15} className="text-white" />
                 </div>
                 <div>
@@ -533,9 +533,9 @@ export default function ChatWidget() {
                   <div className="text-center">
                     <div
                       className="w-14 h-14 rounded-2xl mx-auto mb-3 flex items-center justify-center"
-                      style={{ background: "linear-gradient(135deg, rgba(59,130,246,0.12), rgba(139,92,246,0.12))", border: "1px solid rgba(59,130,246,0.15)" }}
+                      style={{ background: "linear-gradient(135deg, rgba(16,185,129,0.12), rgba(132,204,22,0.12))", border: "1px solid rgba(16,185,129,0.15)" }}
                     >
-                      <Activity size={22} className="text-blue-400" />
+                      <Activity size={22} className="text-emerald-400" />
                     </div>
                     <p className="text-white font-bold text-sm">Orqentra Financial Intelligence</p>
                     <p className="text-xs mt-1.5 leading-relaxed" style={{ color: "var(--color-text-muted)" }}>
@@ -568,7 +568,7 @@ export default function ChatWidget() {
                         className="w-full text-left px-3 py-2 rounded-xl text-xs transition-all group"
                         style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", color: "var(--color-text-secondary)" }}
                       >
-                        <span className="text-blue-400 mr-1.5 group-hover:mr-2 transition-all">→</span>{q}
+                        <span className="text-emerald-400 mr-1.5 group-hover:mr-2 transition-all">→</span>{q}
                       </button>
                     ))}
                   </div>
@@ -614,7 +614,7 @@ export default function ChatWidget() {
                     onClick={() => sendMessage(input)}
                     disabled={!input.trim()}
                     className="w-7 h-7 rounded-lg flex items-center justify-center transition-all disabled:opacity-25"
-                    style={{ background: input.trim() ? "linear-gradient(135deg, #3b82f6, #8b5cf6)" : "rgba(255,255,255,0.05)" }}
+                    style={{ background: input.trim() ? "linear-gradient(135deg, #10b981, #84cc16)" : "rgba(255,255,255,0.05)" }}
                   >
                     <Send size={12} className="text-white" />
                   </button>

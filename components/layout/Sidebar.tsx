@@ -34,9 +34,10 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
     <motion.aside
       animate={{ width: collapsed ? 68 : 240 }}
       transition={{ duration: 0.25, ease: "easeInOut" }}
-      className="flex-shrink-0 flex flex-col relative"
+      className="flex-shrink-0 flex flex-col relative z-40"
       style={{
-        background: "var(--color-bg-secondary)",
+        background: "rgba(5, 8, 16, 0.6)",
+        backdropFilter: "blur(20px)",
         borderRight: "1px solid var(--color-border)",
       }}
     >
@@ -109,7 +110,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
       {/* Collapse Toggle */}
       <button
         onClick={onToggle}
-        className="absolute -right-3 top-7 w-6 h-6 rounded-full flex items-center justify-center transition-all hover:scale-110"
+        className="absolute -right-3 top-7 w-6 h-6 rounded-full flex items-center justify-center transition-all hover:scale-110 z-50 shadow-lg"
         style={{
           background: "var(--color-bg-elevated)",
           border: "1px solid var(--color-border-hover)",
@@ -134,7 +135,7 @@ function NavItem({ item, collapsed, active }: { item: typeof NAV_ITEMS[0]; colla
         <span
           className="flex-shrink-0 w-[18px] h-[18px] flex items-center justify-center"
           style={{
-            background: "linear-gradient(135deg, #3b82f6, #8b5cf6)",
+            background: "linear-gradient(135deg, #10b981, #84cc16)",
             borderRadius: 5,
             padding: 2,
           }}
