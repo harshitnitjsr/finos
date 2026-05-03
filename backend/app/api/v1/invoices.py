@@ -108,33 +108,41 @@ async def process_invoice_background(invoice_id: str, file_path: str, content_ty
                 f"{extracted.get('description', '')}"
             ).strip()
 
+            logger.info(f"Invoice {invoice_id[:8]}: embedding text = '{embed_text[:120]}'")
             embedding = await model_router.embed(embed_text)
 
-            duplicates = await vector_store.find_duplicate_invoices(
-                embedding=embedding,
-                org_id=org_id,
-                threshold=0.94,
-                exclude_id=invoice_id,
-            )
-            if duplicates:
-                invoice.is_duplicate = True
-                invoice.status = "duplicate"
-                await db.commit()
-                logger.warning(f"Invoice {invoice_id} flagged as duplicate: {duplicates[0]}")
-                # Still index it
-                await vector_store.upsert_invoice(
+            if not embedding:
+                logger.warning(
+                    f"Invoice {invoice_id[:8]}: embedding failed (empty result) — "
+                    "skipping duplicate detection. Check OPENAI_API_KEY."
+                )
+            else:
+                duplicates = await vector_store.find_duplicate_invoices(
+                    embedding=embedding,
+                    org_id=org_id,
+                    threshold=0.94,
+                    exclude_id=invoice_id,
+                )
+                if duplicates:
+                    invoice.is_duplicate = True
+                    invoice.status = "duplicate"
+                    await db.commit()
+                    logger.warning(f"Invoice {invoice_id} flagged as duplicate: {duplicates[0]}")
+                    # Still index it so future uploads can detect THIS as a duplicate too
+                    await vector_store.upsert_invoice(
+                        invoice_id=invoice_id,
+                        embedding=embedding,
+                        payload={"org_id": org_id, **extracted},
+                    )
+                    return  # Stop further processing
+
+                # Not a duplicate — index it for future dedup checks
+                indexed = await vector_store.upsert_invoice(
                     invoice_id=invoice_id,
                     embedding=embedding,
                     payload={"org_id": org_id, **extracted},
                 )
-                return
-
-            # Index invoice in Qdrant for future dedup
-            await vector_store.upsert_invoice(
-                invoice_id=invoice_id,
-                embedding=embedding,
-                payload={"org_id": org_id, **extracted},
-            )
+                logger.info(f"Invoice {invoice_id[:8]}: indexed in Qdrant (indexed={indexed})")
 
             # ── Step 4: Semantic vendor matching via Qdrant ──────────────────
             if extracted.get("vendor_name"):

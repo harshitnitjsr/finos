@@ -106,6 +106,7 @@ async def _decide(
     approval.decision_at = datetime.utcnow()
     approval.notes = notes
 
+    invoice_data: dict = {}
     if approval.invoice_id:
         from app.core.temporal import temporal_manager
 
@@ -113,6 +114,14 @@ async def _decide(
         if invoice:
             invoice.status = "approved" if decision == "approve" else "rejected"
             invoice.updated_at = datetime.utcnow()
+            invoice_data = {
+                "org_id": invoice.org_id,
+                "invoice_id": str(invoice.id),
+                "amount": float(invoice.total_amount or invoice.amount or 0),
+                "currency": invoice.currency or "USD",
+                "risk_level": invoice.risk_level or "low",
+                "risk_score": float(invoice.risk_score or 0),
+            }
 
             try:
                 if temporal_manager.client:
@@ -124,13 +133,68 @@ async def _decide(
                     elif decision == "reject":
                         await handle.signal("reject_invoice")
             except Exception:
-                pass
+                pass  # Temporal is optional
 
     await db.commit()
     await cache.invalidate_pattern("approvals")
     await cache.invalidate_pattern("dashboard")
     await cache.invalidate_pattern("invoices")
+
+    # ── Index workflow outcome in Qdrant (background, non-blocking) ───────────
+    if invoice_data:
+        import asyncio
+        try:
+            asyncio.ensure_future(_index_workflow_outcome(
+                invoice_id=approval.invoice_id,
+                decision=decision,
+                invoice_data=invoice_data,
+            ))
+        except RuntimeError:
+            pass  # No running event loop (tests etc.)
+
     return _approval_to_dict(approval)
+
+
+async def _index_workflow_outcome(
+    invoice_id: str,
+    decision: str,
+    invoice_data: dict,
+) -> None:
+    """Fire-and-forget: embed and index the approval outcome into afos_workflows."""
+    try:
+        from app.core.vector_store import vector_store
+        from app.core.model_router import model_router
+        from loguru import logger
+
+        embed_text = (
+            f"Invoice {decision}d. "
+            f"Risk level: {invoice_data.get('risk_level', 'low')}. "
+            f"Amount: {invoice_data.get('amount', 0)} {invoice_data.get('currency', 'USD')}. "
+            f"Outcome: {decision}."
+        )
+        embedding = await model_router.embed(embed_text)
+        if not embedding:
+            logger.warning(f"Workflow Qdrant: embed returned empty for invoice {invoice_id}")
+            return
+
+        await vector_store.upsert_workflow_context(
+            workflow_id=f"wf_{invoice_id}",
+            embedding=embedding,
+            payload={
+                "org_id": invoice_data.get("org_id", ""),
+                "workflow_type": "InvoiceApprovalWorkflow",
+                "invoice_id": invoice_id,
+                "status": "completed",
+                "amount": invoice_data.get("amount", 0),
+                "risk_level": invoice_data.get("risk_level", "low"),
+                "outcome": decision,
+                "completed_at": datetime.utcnow().isoformat(),
+            },
+        )
+        logger.debug(f"Qdrant: indexed workflow outcome for invoice {invoice_id} → {decision}")
+    except Exception as e:
+        logger.warning(f"Workflow Qdrant indexing failed (non-critical): {e}")
+
 
 
 @router.get("/stats/pending-count")

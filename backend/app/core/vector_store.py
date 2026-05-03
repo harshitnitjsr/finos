@@ -26,6 +26,7 @@ COLLECTION_EXPENSES = "afos_expenses"
 COLLECTION_VENDORS = "afos_vendors"
 COLLECTION_ANOMALIES = "afos_anomalies"
 COLLECTION_CONVERSATIONS = "afos_conversations"  # semantic memory
+COLLECTION_WORKFLOWS = "afos_workflows"           # workflow context RAG
 
 VECTOR_DIM = 1536  # text-embedding-3-small dimension
 
@@ -48,6 +49,7 @@ class VectorStoreService:
             COLLECTION_VENDORS,
             COLLECTION_ANOMALIES,
             COLLECTION_CONVERSATIONS,
+            COLLECTION_WORKFLOWS,
         ]
         try:
             existing = await self.client.get_collections()
@@ -354,10 +356,152 @@ class VectorStoreService:
             logger.error(f"Qdrant expense search failed: {e}")
             return []
 
+    # ── Anomaly operations ────────────────────────────────────────────────────
+
+    async def upsert_anomaly(
+        self,
+        anomaly_id: str,
+        embedding: list[float],
+        payload: dict,
+    ) -> bool:
+        """Index an anomaly embedding for clustering and pattern detection."""
+        try:
+            result = await self.client.upsert(
+                collection_name=COLLECTION_ANOMALIES,
+                points=[
+                    PointStruct(
+                        id=_stable_uuid(anomaly_id),
+                        vector=embedding,
+                        payload={
+                            "anomaly_id": anomaly_id,
+                            "org_id": payload.get("org_id"),
+                            "category": payload.get("category", ""),
+                            "amount": float(payload.get("amount") or 0),
+                            "vendor_name": payload.get("vendor_name", ""),
+                            "anomaly_score": float(payload.get("anomaly_score") or 0),
+                            "reason": payload.get("reason", ""),
+                            "detected_at": payload.get("detected_at", ""),
+                        },
+                    )
+                ],
+            )
+            return result.status == UpdateStatus.COMPLETED
+        except Exception as e:
+            logger.error(f"Qdrant upsert_anomaly failed: {e}")
+            return False
+
+    async def find_similar_anomalies(
+        self,
+        embedding: list[float],
+        org_id: str,
+        threshold: float = 0.80,
+        limit: int = 5,
+    ) -> list[dict]:
+        """Find semantically similar past anomalies — used for anomaly explanation enrichment."""
+        try:
+            results = await self.client.search(
+                collection_name=COLLECTION_ANOMALIES,
+                query_vector=embedding,
+                limit=limit,
+                score_threshold=threshold,
+                query_filter=Filter(
+                    must=[FieldCondition(key="org_id", match=MatchValue(value=org_id))]
+                ),
+                with_payload=True,
+            )
+            return [
+                {
+                    "anomaly_id": r.payload.get("anomaly_id"),
+                    "category": r.payload.get("category"),
+                    "vendor_name": r.payload.get("vendor_name"),
+                    "amount": r.payload.get("amount"),
+                    "anomaly_score": r.payload.get("anomaly_score"),
+                    "reason": r.payload.get("reason"),
+                    "score": round(r.score, 3),
+                }
+                for r in results
+            ]
+        except Exception as e:
+            logger.error(f"Qdrant anomaly search failed: {e}")
+            return []
+
+    # ── Workflow context operations ────────────────────────────────────────────
+
+    async def upsert_workflow_context(
+        self,
+        workflow_id: str,
+        embedding: list[float],
+        payload: dict,
+    ) -> bool:
+        """Index workflow execution context for semantic retrieval and pattern learning."""
+        try:
+            result = await self.client.upsert(
+                collection_name=COLLECTION_WORKFLOWS,
+                points=[
+                    PointStruct(
+                        id=_stable_uuid(workflow_id),
+                        vector=embedding,
+                        payload={
+                            "workflow_id": workflow_id,
+                            "org_id": payload.get("org_id"),
+                            "workflow_type": payload.get("workflow_type", ""),
+                            "invoice_id": payload.get("invoice_id", ""),
+                            "status": payload.get("status", ""),
+                            "amount": float(payload.get("amount") or 0),
+                            "risk_level": payload.get("risk_level", ""),
+                            "outcome": payload.get("outcome", ""),
+                            "completed_at": payload.get("completed_at", ""),
+                        },
+                    )
+                ],
+            )
+            return result.status == UpdateStatus.COMPLETED
+        except Exception as e:
+            logger.error(f"Qdrant upsert_workflow_context failed: {e}")
+            return False
+
+    async def search_similar_workflows(
+        self,
+        embedding: list[float],
+        org_id: str,
+        threshold: float = 0.78,
+        limit: int = 4,
+    ) -> list[dict]:
+        """Find similar past workflow executions — aids approval routing decisions."""
+        try:
+            results = await self.client.search(
+                collection_name=COLLECTION_WORKFLOWS,
+                query_vector=embedding,
+                limit=limit,
+                score_threshold=threshold,
+                query_filter=Filter(
+                    must=[FieldCondition(key="org_id", match=MatchValue(value=org_id))]
+                ),
+                with_payload=True,
+            )
+            return [
+                {
+                    "workflow_id": r.payload.get("workflow_id"),
+                    "workflow_type": r.payload.get("workflow_type"),
+                    "status": r.payload.get("status"),
+                    "outcome": r.payload.get("outcome"),
+                    "risk_level": r.payload.get("risk_level"),
+                    "amount": r.payload.get("amount"),
+                    "score": round(r.score, 3),
+                }
+                for r in results
+            ]
+        except Exception as e:
+            logger.error(f"Qdrant workflow search failed: {e}")
+            return []
+
     async def get_collection_stats(self) -> dict:
         """Get stats for all collections."""
         stats = {}
-        for name in [COLLECTION_INVOICES, COLLECTION_EXPENSES, COLLECTION_VENDORS]:
+        for name in [
+            COLLECTION_INVOICES, COLLECTION_EXPENSES, COLLECTION_VENDORS,
+            COLLECTION_ANOMALIES, COLLECTION_CONVERSATIONS, COLLECTION_WORKFLOWS,
+        ]:
             try:
                 info = await self.client.get_collection(name)
                 stats[name] = {

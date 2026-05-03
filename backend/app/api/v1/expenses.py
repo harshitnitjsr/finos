@@ -34,7 +34,7 @@ class ExpenseUpdate(BaseModel):
     status: Optional[str] = None
 
 
-async def categorize_expense_background(expense_id: str):
+async def categorize_expense_background(expense_id: str, org_id: str):
     """Background: AI categorize + embed into Qdrant + cache invalidation."""
     from app.core.database import AsyncSessionLocal
     async with AsyncSessionLocal() as db:
@@ -82,7 +82,7 @@ async def categorize_expense_background(expense_id: str):
             expense_id=expense_id,
             embedding=embedding,
             payload={
-                "org_id": ORG_ID,
+                "org_id": org_id,
                 "category": expense.category or "",
                 "amount": float(expense.amount),
                 "currency": expense.currency,
@@ -90,6 +90,23 @@ async def categorize_expense_background(expense_id: str):
                 "is_anomaly": expense.is_anomaly,
             },
         )
+
+        # Also index flagged anomalies in the dedicated anomaly collection
+        if expense.is_anomaly and embedding:
+            from datetime import timezone
+            await vector_store.upsert_anomaly(
+                anomaly_id=expense_id,
+                embedding=embedding,
+                payload={
+                    "org_id": org_id,
+                    "category": expense.category or "",
+                    "amount": float(expense.amount),
+                    "vendor_name": expense.vendor_name or "",
+                    "anomaly_score": float(expense.anomaly_score or 0),
+                    "reason": expense.anomaly_reason or "",
+                    "detected_at": datetime.utcnow().isoformat(),
+                },
+            )
 
         # Step 4: Invalidate analytics caches
         await cache.invalidate_pattern("dashboard")
@@ -121,7 +138,7 @@ async def create_expense(
     expense_id = expense.id
     await db.commit()
 
-    background_tasks.add_task(categorize_expense_background, expense_id)
+    background_tasks.add_task(categorize_expense_background, expense_id, org_id)
     return {"id": expense_id, "status": "pending", "message": "Expense created. AI categorization queued."}
 
 

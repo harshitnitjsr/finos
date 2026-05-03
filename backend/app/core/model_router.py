@@ -143,22 +143,30 @@ class ModelRouter:
         return result.content
 
     async def embed(self, text: str) -> list[float]:
-        """Generate embeddings using text-embedding-3-small."""
-        model = self.get_model(ModelTask.EMBEDDING)
-        response = await self.client.embeddings.create(
-            model=model,
-            input=text[:8000],  # Trim to avoid token limit
-        )
-        return response.data[0].embedding
+        """Generate embeddings using text-embedding-3-small. Returns [] on failure."""
+        try:
+            model = self.get_model(ModelTask.EMBEDDING)
+            response = await self.client.embeddings.create(
+                model=model,
+                input=text[:8000],
+            )
+            return response.data[0].embedding
+        except Exception as e:
+            logger.error(f"ModelRouter.embed failed: {e}")
+            return []
 
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        """Generate embeddings for multiple texts."""
-        model = self.get_model(ModelTask.EMBEDDING)
-        response = await self.client.embeddings.create(
-            model=model,
-            input=[t[:8000] for t in texts],
-        )
-        return [item.embedding for item in response.data]
+        """Generate embeddings for multiple texts. Returns [] on failure."""
+        try:
+            model = self.get_model(ModelTask.EMBEDDING)
+            response = await self.client.embeddings.create(
+                model=model,
+                input=[t[:8000] for t in texts],
+            )
+            return [item.embedding for item in response.data]
+        except Exception as e:
+            logger.error(f"ModelRouter.embed_batch failed: {e}")
+            return [[] for _ in texts]
 
 
 # Singleton

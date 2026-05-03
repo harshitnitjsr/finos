@@ -95,14 +95,74 @@ async def signal_invoice_workflow(request: SignalInvoiceRequest):
             new_status = "rejected"
             
         # Immediately update UI state so it feels responsive and the button hides
+        invoice_data: dict = {}
         async with AsyncSessionLocal() as db:
             invoice = await db.get(Invoice, request.invoice_id)
             if invoice:
                 invoice.status = new_status
                 await db.commit()
                 await cache.invalidate_pattern("invoices")
-            
+                invoice_data = {
+                    "org_id": invoice.org_id,
+                    "invoice_id": str(invoice.id),
+                    "amount": float(invoice.total_amount or invoice.amount or 0),
+                    "currency": invoice.currency,
+                    "risk_level": invoice.risk_level or "low",
+                    "risk_score": float(invoice.risk_score or 0),
+                }
+
+        # ── Index workflow outcome in Qdrant for future approval pattern learning ─
+        if invoice_data:
+            import asyncio
+            asyncio.get_event_loop().create_task(
+                _embed_and_index_workflow(
+                    invoice_id=request.invoice_id,
+                    action=request.action,
+                    new_status=new_status,
+                    invoice_data=invoice_data,
+                )
+            )
+
         return {"message": f"Signal '{request.action}' sent to workflow {request.invoice_id}"}
     except Exception as e:
         logger.error(f"Failed to signal workflow: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+async def _embed_and_index_workflow(
+    invoice_id: str,
+    action: str,
+    new_status: str,
+    invoice_data: dict,
+) -> None:
+    """Background: embed workflow outcome text and upsert to afos_workflows."""
+    try:
+        from app.core.vector_store import vector_store
+        from app.core.model_router import model_router
+        from datetime import datetime
+
+        embed_text = (
+            f"Invoice workflow {action}d. "
+            f"Risk level: {invoice_data.get('risk_level', 'low')}. "
+            f"Amount: {invoice_data.get('amount', 0)} {invoice_data.get('currency', 'USD')}. "
+            f"Outcome: {new_status}."
+        )
+        embedding = await model_router.embed(embed_text)
+
+        await vector_store.upsert_workflow_context(
+            workflow_id=f"wf_{invoice_id}",
+            embedding=embedding,
+            payload={
+                "org_id": invoice_data.get("org_id", ""),
+                "workflow_type": "InvoiceApprovalWorkflow",
+                "invoice_id": invoice_id,
+                "status": "completed",
+                "amount": invoice_data.get("amount", 0),
+                "risk_level": invoice_data.get("risk_level", "low"),
+                "outcome": new_status,
+                "completed_at": datetime.utcnow().isoformat(),
+            },
+        )
+        logger.debug(f"Qdrant: indexed workflow outcome for invoice {invoice_id} → {new_status}")
+    except Exception as e:
+        logger.warning(f"Workflow Qdrant indexing failed (non-critical): {e}")
