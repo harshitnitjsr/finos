@@ -1,10 +1,11 @@
 "use client";
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { AlertTriangle, TrendingUp, BarChart2, RefreshCw, InboxIcon, Sparkles, Loader2, RepeatIcon } from "lucide-react";
+import { AlertTriangle, TrendingUp, BarChart2, RefreshCw, InboxIcon, Sparkles, Loader2, RepeatIcon, Plus } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { apiFetch } from "@/lib/api";
+import AddExpenseModal from "@/components/expenses/AddExpenseModal";
 
 const cv = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.06 } } };
 const iv = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.35 } } };
@@ -62,10 +63,12 @@ function useAnomalies(enrich: boolean) {
 }
 
 export default function ExpensesPage() {
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<"all" | "anomalies" | "recurring" | "subscriptions">("all");
   const [enrichAnomalies, setEnrichAnomalies] = useState(false);
   const [subscriptionData, setSubscriptionData] = useState<SubscriptionResp | null>(null);
   const [subscriptionLoading, setSubscriptionLoading] = useState(false);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
   const { data: allData, isLoading: allLoading } = useExpenses({ limit: "100" });
   const { data: categoryData } = useCategories();
@@ -98,6 +101,13 @@ export default function ExpensesPage() {
             {allData?.total ?? "—"} total · {anomalies.length} anomalies · {expenses.filter(e => e.is_recurring).length} recurring
           </p>
         </div>
+        <button
+          onClick={() => setIsAddModalOpen(true)}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white font-semibold text-sm transition-colors"
+        >
+          <Plus size={16} />
+          Add Expense
+        </button>
       </motion.div>
 
       {/* Summary Cards */}
@@ -362,6 +372,16 @@ export default function ExpensesPage() {
           </div>
         )
       )}
+
+      <AddExpenseModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ["expenses"] });
+          queryClient.invalidateQueries({ queryKey: ["expense-categories"] });
+          queryClient.invalidateQueries({ queryKey: ["anomalies"] });
+        }}
+      />
     </motion.div>
   );
 }

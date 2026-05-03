@@ -74,6 +74,27 @@ async def categorize_expense_background(expense_id: str, org_id: str):
 
         await db.commit()
 
+        # Step 2.5: Auto-create Vendor if it doesn't exist
+        if expense.vendor_name:
+            from app.models.models import Vendor
+            v_res = await db.execute(select(Vendor).where(Vendor.name == expense.vendor_name, Vendor.org_id == org_id).limit(1))
+            vendor = v_res.scalar_one_or_none()
+            if not vendor:
+                vendor = Vendor(org_id=org_id, name=expense.vendor_name, risk_score=20.0, risk_level="low", payment_currency=expense.currency)
+                db.add(vendor)
+                await db.flush()
+                # Embed and index the new vendor into Qdrant
+                v_embed_text = f"{vendor.name} {expense.category or ''} {expense.currency}"
+                v_embed = await model_router.embed(v_embed_text)
+                await vector_store.upsert_vendor(
+                    vendor_id=str(vendor.id),
+                    embedding=v_embed,
+                    payload={"org_id": org_id, "name": vendor.name, "category": expense.category or "", "risk_level": "low"}
+                )
+                await db.commit()
+                # Invalidate vendors cache
+                await cache.invalidate_pattern("vendors")
+
         # Step 3: Embed and upsert into Qdrant for future anomaly clustering
         embed_text = (
             f"{expense.description} {expense.vendor_name or ''} "
@@ -132,7 +153,11 @@ async def create_expense(
         currency=expense_in.currency,
         vendor_name=expense_in.vendor_name,
         department=expense_in.department,
-        transaction_date=expense_in.transaction_date or datetime.utcnow(),
+        transaction_date=(
+            expense_in.transaction_date.replace(tzinfo=None)
+            if expense_in.transaction_date
+            else datetime.utcnow()
+        ),
         status="pending",
     )
     db.add(expense)

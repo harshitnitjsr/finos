@@ -51,9 +51,14 @@ async def list_vendors(
         return cached
 
     q = (
-        select(Vendor)
+        select(
+            Vendor,
+            func.coalesce(func.sum(Invoice.total_amount), Vendor.total_paid, 0).label("computed_total")
+        )
+        .outerjoin(Invoice, Invoice.vendor_id == Vendor.id)
         .where(Vendor.org_id == org_id)
-        .order_by(desc(Vendor.total_paid))
+        .group_by(Vendor.id)
+        .order_by(desc("computed_total"))
         .limit(limit)
     )
     if category:
@@ -62,10 +67,17 @@ async def list_vendors(
         q = q.where(Vendor.risk_level == risk_level)
 
     result = await db.execute(q)
-    vendors = result.scalars().all()
+    rows = result.all()
+
+    vendors = []
+    for vendor, computed_total in rows:
+        v_dict = _vendor_to_dict(vendor)
+        # Dynamic calculation overrides the static column if invoices exist
+        v_dict["total_paid"] = float(computed_total)
+        vendors.append(v_dict)
 
     response = {
-        "vendors": [_vendor_to_dict(v) for v in vendors],
+        "vendors": vendors,
         "total": len(vendors),
     }
     await cache.set("vendors", response, TTL_VENDOR_LIST, cache_key)
@@ -190,7 +202,7 @@ async def semantic_vendor_search(
     matches = await vector_store.find_similar_vendors(
         embedding=embedding,
         org_id=org_id,
-        threshold=0.75,
+        threshold=0.25,
         limit=10,
     )
     return {"query": q, "matches": matches}

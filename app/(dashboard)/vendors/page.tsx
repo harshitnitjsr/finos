@@ -115,18 +115,21 @@ export default function VendorsPage() {
         </div>
         {semanticResults.length > 0 && (
           <div className="mt-3 space-y-1">
-            {semanticResults.map(m => (
-              <div key={m.id} onClick={() => setSelectedId(m.id)}
-                className="flex items-center justify-between p-2 rounded-lg cursor-pointer hover:border-blue-500/30 transition-colors"
-                style={{ background: "var(--color-bg-elevated)", border: "1px solid var(--color-border)" }}>
-                <div className="flex items-center gap-2">
-                  <Building2 size={12} className="text-blue-400" />
-                  <span className="text-sm text-white">{m.name || m.id.slice(0, 8)}</span>
-                  {m.category && <span className="text-xs text-slate-500">· {m.category}</span>}
+            {semanticResults.map(m => {
+              const vid = m.id || (m as any).vendor_id;
+              return (
+                <div key={vid} onClick={() => setSelectedId(vid)}
+                  className="flex items-center justify-between p-2 rounded-lg cursor-pointer hover:border-blue-500/30 transition-colors"
+                  style={{ background: "var(--color-bg-elevated)", border: "1px solid var(--color-border)" }}>
+                  <div className="flex items-center gap-2">
+                    <Building2 size={12} className="text-blue-400" />
+                    <span className="text-sm text-white">{m.name || vid.slice(0, 8)}</span>
+                    {m.category && <span className="text-xs text-slate-500">· {m.category}</span>}
+                  </div>
+                  <span className="text-xs text-emerald-400">{((m.score || 0) * 100).toFixed(0)}% match</span>
                 </div>
-                <span className="text-xs text-emerald-400">{((m.score || 0) * 100).toFixed(0)}% match</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </motion.div>

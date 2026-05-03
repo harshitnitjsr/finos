@@ -36,7 +36,9 @@ async function handler(
   const { path } = await params;
   const backendPath = path.join("/");
   const search = req.nextUrl.search ?? "";
-  const url = `${BACKEND}/api/v1/${backendPath}${search}`;
+  const hasTrailingSlash = req.nextUrl.pathname.endsWith("/");
+  const finalPath = hasTrailingSlash ? `${backendPath}/` : backendPath;
+  const url = `${BACKEND}/api/v1/${finalPath}${search}`;
 
   // Build forwarded headers
   const headers = new Headers();
@@ -57,15 +59,12 @@ async function handler(
     headers.set("X-Internal-Token", internalToken);
   }
 
-  const bodyBuffer =
-    req.method !== "GET" && req.method !== "HEAD"
-      ? await req.arrayBuffer()
-      : undefined;
+  const bodyData = req.method !== "GET" && req.method !== "HEAD" ? await req.blob() : undefined;
 
   const backendRes = await fetch(url, {
     method: req.method,
     headers,
-    body: bodyBuffer,
+    body: bodyData,
     cache: "no-store", // CRITICAL: disables Next.js internal fetch caching/buffering
   });
 
