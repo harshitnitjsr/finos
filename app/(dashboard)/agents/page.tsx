@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Bot, Activity, Cpu, Zap, InboxIcon, Clock, List, CheckCircle2, XCircle } from "lucide-react";
+import PageContextHelp from "@/components/global/PageContextHelp";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
 import { apiFetch } from "@/lib/api";
@@ -63,7 +64,15 @@ export default function AgentsPage() {
     <motion.div variants={cv} initial="hidden" animate="show" className="space-y-6">
       <motion.div variants={iv} className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">AI Agents</h1>
+          <div className="flex items-center">
+            <h1 className="text-2xl font-bold text-white">AI Agents</h1>
+            <PageContextHelp
+              pageName="AI Agents"
+              why="The system is driven by a team of autonomous AI assistants. You need visibility into exactly what these assistants are doing in the background."
+              what="This page provides a live view of the AI team. You can monitor the health of specific assistants (like the Categorization AI or Insight AI) and view their recent actions."
+              how="Switch to the 'Tool Execution Logs' tab to see exactly what external systems the AI assistants are interacting with in real-time. This provides complete transparency into their autonomous actions."
+            />
+          </div>
           <p className="text-sm mt-1" style={{ color: "var(--color-text-secondary)" }}>
             {data ? `${data.active}/${data.total} agents active` : "Loading agent registry…"}
           </p>

@@ -2,6 +2,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { BarChart3, TrendingUp, PieChart as PieIcon, Download, InboxIcon } from "lucide-react";
+import PageContextHelp from "@/components/global/PageContextHelp";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, PieChart, Pie, Cell,
@@ -66,7 +67,15 @@ export default function AnalyticsPage() {
     <motion.div variants={cv} initial="hidden" animate="show" className="space-y-6">
       <motion.div variants={iv} className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Financial Analytics</h1>
+          <div className="flex items-center">
+            <h1 className="text-2xl font-bold text-white">Financial Analytics</h1>
+            <PageContextHelp
+              pageName="Financial Analytics"
+              why="Raw data isn't useful without visual trends. Analytics provides cross-departmental macro views of spending habits."
+              what="You get fully interactive 90-day spend trends, dynamic category breakdowns, and top vendor charts, all aggregated live from your financial records."
+              how="Analyze the 'Spend by Category' pie chart to identify where capital is flowing. Use the 'Top Vendors' bar chart to negotiate bulk discounts with your highest-volume suppliers."
+            />
+          </div>
           <p className="text-sm mt-1" style={{ color: "var(--color-text-secondary)" }}>
             Deep dive into spend, vendors, and policy compliance
           </p>

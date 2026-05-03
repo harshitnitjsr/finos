@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { AlertTriangle, TrendingUp, BarChart2, RefreshCw, InboxIcon, Sparkles, Loader2, RepeatIcon, Plus } from "lucide-react";
+import PageContextHelp from "@/components/global/PageContextHelp";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { apiFetch } from "@/lib/api";
 import AddExpenseModal from "@/components/expenses/AddExpenseModal";
@@ -96,7 +97,15 @@ export default function ExpensesPage() {
     <motion.div variants={cv} initial="hidden" animate="show" className="space-y-5">
       <motion.div variants={iv} className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Expense Intelligence</h1>
+          <div className="flex items-center">
+            <h1 className="text-2xl font-bold text-white">Expense Intelligence</h1>
+            <PageContextHelp
+              pageName="Expense Intelligence"
+              why="Tracking corporate expenses across multiple currencies and departments is complex and susceptible to fraud."
+              what="This page centralizes all corporate spending. It automatically categorizes expenses, identifies recurring SaaS subscriptions, and highlights statistical anomalies using the AI Insight Agent."
+              how="Switch between 'All Expenses', 'Anomalies', and 'Recurring' tabs to triage spend. Look for red anomaly badges which indicate the AI has flagged the transaction as highly irregular compared to historical data."
+            />
+          </div>
           <p className="text-sm mt-1" style={{ color: "var(--color-text-secondary)" }}>
             {allData?.total ?? "—"} total · {anomalies.length} anomalies · {expenses.filter(e => e.is_recurring).length} recurring
           </p>

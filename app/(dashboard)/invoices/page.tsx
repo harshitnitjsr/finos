@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { Upload, Search, Filter, FileText, X, AlertTriangle, CheckCircle, Clock, InboxIcon } from "lucide-react";
 import { useCallback } from "react";
+import PageContextHelp from "@/components/global/PageContextHelp";
 
 import { apiFetch } from "@/lib/api";
 const cv = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.05 } } };
@@ -91,7 +92,15 @@ export default function InvoicesPage() {
     <motion.div variants={cv} initial="hidden" animate="show" className="space-y-5">
       <motion.div variants={iv} className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Invoice Intelligence</h1>
+          <div className="flex items-center">
+            <h1 className="text-2xl font-bold text-white">Invoice Intelligence</h1>
+            <PageContextHelp
+              pageName="Invoice Intelligence"
+              why="Managing incoming invoices manually is slow, error-prone, and lacks security. This page acts as the entry point for fully automated invoice processing."
+              what="You get a drag-and-drop upload zone that triggers our smart AI assistants. They automatically read the document, extract line items, perform duplicate checks, and route the invoice for payment."
+              how="Upload any PDF or image invoice. The AI will instantly classify it and flag any policy violations or anomalies. You can track its status in the table below."
+            />
+          </div>
           <p className="text-sm mt-1" style={{ color: "var(--color-text-secondary)" }}>
             {data?.total ?? "—"} invoices total
           </p>

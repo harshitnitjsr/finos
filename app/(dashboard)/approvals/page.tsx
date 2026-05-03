@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { CheckCircle, XCircle, Clock, AlertTriangle, InboxIcon, ChevronDown, ChevronUp } from "lucide-react";
+import PageContextHelp from "@/components/global/PageContextHelp";
 
 import { apiFetch } from "@/lib/api";
 const cv = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.05 } } };
@@ -53,7 +54,15 @@ export default function ApprovalsPage() {
     <motion.div variants={cv} initial="hidden" animate="show" className="space-y-5">
       <motion.div variants={iv} className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Approval Center</h1>
+          <div className="flex items-center">
+            <h1 className="text-2xl font-bold text-white">Approval Center</h1>
+            <PageContextHelp
+              pageName="Approval Center"
+              why="Not all actions can be fully autonomous. Certain high-risk or high-value transactions require human oversight before funds are dispersed."
+              what="This page acts as a centralized inbox for all tasks that the AI assistants have escalated to humans. You get full context on why the AI escalated the task, including risk scores and policy checks."
+              how="Review the 'AI Analysis' box for each pending item. If the AI flagged a policy violation, evaluate whether to approve or reject the payment. Your action here signals the automated system to resume."
+            />
+          </div>
           <p className="text-sm mt-1" style={{ color: "var(--color-text-secondary)" }}>
             {counts.pending ?? "—"} pending · {counts.approved ?? "—"} approved · {counts.rejected ?? "—"} rejected
           </p>

@@ -11,6 +11,7 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell,
 } from "recharts";
 import Link from "next/link";
+import PageContextHelp from "@/components/global/PageContextHelp";
 import { apiFetch } from "@/lib/api";
 
 const COLORS = ["#3b82f6", "#10b981", "#8b5cf6", "#f59e0b", "#f43f5e", "#06b6d4"];
@@ -84,7 +85,15 @@ export default function DashboardPage() {
       {/* ── Header ── */}
       <motion.div variants={iv} className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Financial Operations</h1>
+          <div className="flex items-center">
+            <h1 className="text-2xl font-bold text-white tracking-tight">Financial Operations</h1>
+            <PageContextHelp
+              pageName="Financial Operations"
+              why="The Dashboard serves as the central command center for the entire AFOS platform, providing a holistic view of your financial health at a glance."
+              what="You get high-level KPIs, multi-currency spend trends, pending manual approvals, and live alerts directly from the AI agents."
+              how="Use the KPI cards to quickly spot anomalies or bottlenecks. The spend trend chart helps you visualize exactly how your rolling 30-day burn compares to historical data."
+            />
+          </div>
           <p className="text-sm mt-0.5" style={{ color: "var(--color-text-secondary)" }}>
             {new Date().toLocaleDateString("en", { weekday: "long", month: "long", day: "numeric" })}
           </p>

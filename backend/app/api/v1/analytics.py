@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, literal_column, text
 from app.core.database import get_db
 from app.core.redis_client import cache, TTL_DASHBOARD, TTL_ANALYTICS
-from app.models.models import Invoice, Expense, Approval, Vendor, Workflow
+from app.models.models import Invoice, Expense, Approval, Vendor, Workflow, AgentLog
 from app.api.deps import get_org_id
 
 router = APIRouter()
@@ -325,3 +325,83 @@ async def category_breakdown(
     response = {"data": data}
     await cache.set("category_breakdown", response, TTL_ANALYTICS, cache_key)
     return response
+
+def format_time_ago(dt: datetime) -> str:
+    diff = datetime.utcnow() - dt
+    seconds = int(diff.total_seconds())
+    if seconds < 60:
+        return "Just now"
+    minutes = seconds // 60
+    if minutes < 60:
+        return f"{minutes} min ago"
+    hours = minutes // 60
+    if hours < 24:
+        return f"{hours} hour{'s' if hours != 1 else ''} ago"
+    days = hours // 24
+    return f"{days} day{'s' if days != 1 else ''} ago"
+
+
+@router.get("/notifications")
+async def get_notifications(
+    org_id: str = Depends(get_org_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Aggregate recent alerts and notifications. Uncached to ensure real-time UI."""
+    notifications = []
+
+    # 1. Pending Approvals Summary
+    appr_result = await db.execute(
+        select(func.count(Approval.id), func.max(Approval.created_at)).where(
+            Approval.org_id == org_id, Approval.status == "pending"
+        )
+    )
+    appr_row = appr_result.one_or_none()
+    if appr_row and appr_row[0] > 0:
+        count, latest_time = appr_row
+        notifications.append({
+            "id": f"appr-{latest_time.timestamp()}",
+            "title": f"✅ {count} approvals pending your review",
+            "type": "info",
+            "time": format_time_ago(latest_time) if latest_time else "Just now",
+            "timestamp": latest_time.timestamp() if latest_time else datetime.utcnow().timestamp()
+        })
+
+    # 2. Recent Anomalies
+    anomaly_res = await db.execute(
+        select(Expense).where(
+            Expense.org_id == org_id, Expense.is_anomaly == True
+        ).order_by(desc(Expense.created_at)).limit(2)
+    )
+    for exp in anomaly_res.scalars():
+        amount_str = f"{CURRENCIES.get(exp.currency, {'symbol': exp.currency})['symbol']}{exp.amount:,.0f}"
+        notifications.append({
+            "id": f"anom-{exp.id}",
+            "title": f"🔴 Anomaly: {amount_str} — {exp.vendor_name or 'Unknown'}",
+            "type": "danger",
+            "time": format_time_ago(exp.created_at),
+            "timestamp": exp.created_at.timestamp()
+        })
+
+    # 3. Recent Agent Logs
+    agent_res = await db.execute(
+        select(AgentLog).order_by(desc(AgentLog.created_at)).limit(3)
+    )
+    for log in agent_res.scalars():
+        # Clean up agent actions for UI
+        action = log.action.replace("_", " ").title()
+        notifications.append({
+            "id": f"agent-{log.id}",
+            "title": f"🤖 {log.agent_name}: {action}",
+            "type": "success" if log.status == "success" else "warning",
+            "time": format_time_ago(log.created_at),
+            "timestamp": log.created_at.timestamp()
+        })
+
+    # Sort descending by timestamp and limit to top 5
+    notifications.sort(key=lambda x: x["timestamp"], reverse=True)
+    
+    # Strip timestamp before sending to client
+    for n in notifications:
+        n.pop("timestamp", None)
+
+    return {"notifications": notifications[:5]}

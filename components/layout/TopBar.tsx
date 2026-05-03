@@ -5,11 +5,19 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useSession, signOut } from "next-auth/react";
 import Image from "next/image";
 import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
 
 const CURRENCIES = ["USD", "INR", "EUR", "GBP", "JPY"];
 const CURRENCY_SYMBOLS: Record<string, string> = {
   USD: "$", INR: "₹", EUR: "€", GBP: "£", JPY: "¥"
 };
+
+interface NotificationItem {
+  id: string;
+  title: string;
+  type: string;
+  time: string;
+}
 
 interface TopBarProps {
   onCommandOpen: () => void;
@@ -19,6 +27,19 @@ export default function TopBar({ onCommandOpen }: TopBarProps) {
   const [currency, setCurrency] = useState("USD");
   const [currencyOpen, setCurrencyOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+
+  const { data: notifData } = useQuery<{ notifications: NotificationItem[] }>({
+    queryKey: ["notifications"],
+    queryFn: async () => {
+      const res = await fetch("/api/backend/analytics/notifications");
+      if (!res.ok) throw new Error("Failed to fetch notifications");
+      return res.json();
+    },
+    refetchInterval: 30000, // Poll every 30 seconds
+  });
+
+  const notifications = notifData?.notifications || [];
+  const hasUnread = notifications.length > 0;
 
   return (
     <header
@@ -107,7 +128,7 @@ export default function TopBar({ onCommandOpen }: TopBarProps) {
             }}
           >
             <Bell size={16} />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-rose-500" />
+            {hasUnread && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-rose-500" />}
           </button>
           <AnimatePresence>
             {notifOpen && (
@@ -127,17 +148,21 @@ export default function TopBar({ onCommandOpen }: TopBarProps) {
                 <div className="px-4 py-3 border-b" style={{ borderColor: "var(--color-border)" }}>
                   <span className="font-semibold text-sm text-white">Notifications</span>
                 </div>
-                {NOTIFICATIONS.map((n, i) => (
-                  <div key={i} className="px-4 py-3 border-b hover:bg-blue-500/5 transition-colors cursor-pointer" style={{ borderColor: "var(--color-border)" }}>
-                    <div className="flex items-start gap-3">
-                      <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${n.type === 'warning' ? 'bg-amber-400' : n.type === 'danger' ? 'bg-rose-400' : 'bg-blue-400'}`} />
-                      <div>
-                        <p className="text-sm text-white font-medium">{n.title}</p>
-                        <p className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>{n.time}</p>
+                {notifications.length === 0 ? (
+                  <div className="p-4 text-center text-xs text-slate-400">No new notifications</div>
+                ) : (
+                  notifications.map((n) => (
+                    <div key={n.id} className="px-4 py-3 border-b hover:bg-blue-500/5 transition-colors cursor-pointer" style={{ borderColor: "var(--color-border)" }}>
+                      <div className="flex items-start gap-3">
+                        <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${n.type === 'warning' ? 'bg-amber-400' : n.type === 'danger' ? 'bg-rose-400' : 'bg-blue-400'}`} />
+                        <div>
+                          <p className="text-sm text-white font-medium">{n.title}</p>
+                          <p className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>{n.time}</p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </motion.div>
             )}
           </AnimatePresence>
@@ -245,10 +270,3 @@ function UserMenu() {
     </div>
   );
 }
-
-const NOTIFICATIONS = [
-  { title: "⚠️ Invoice flagged — $45,000 unknown vendor", type: "warning", time: "2 min ago" },
-  { title: "🔴 Anomaly: 312% spend spike in Cloud", type: "danger", time: "8 min ago" },
-  { title: "✅ 3 approvals pending your review", type: "info", time: "15 min ago" },
-  { title: "🤖 Invoice Agent processed 12 invoices", type: "success", time: "1 hour ago" },
-];

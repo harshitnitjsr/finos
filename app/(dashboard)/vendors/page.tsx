@@ -6,6 +6,7 @@ import {
   Building2, Shield, Search, Plus, X, AlertTriangle,
   CheckCircle2, TrendingUp, InboxIcon, ChevronRight, Loader2, Heart,
 } from "lucide-react";
+import PageContextHelp from "@/components/global/PageContextHelp";
 import { apiFetch } from "@/lib/api";
 
 const cv = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.06 } } };
@@ -86,7 +87,15 @@ export default function VendorsPage() {
       {/* Header */}
       <motion.div variants={iv} className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Vendor Intelligence</h1>
+          <div className="flex items-center">
+            <h1 className="text-2xl font-bold text-white">Vendor Intelligence</h1>
+            <PageContextHelp
+              pageName="Vendor Intelligence"
+              why="Managing third-party vendors is critical for preventing fraud and tracking holistic spend across disparate invoices and expenses."
+              what="This page maintains a unified view of all active vendors. It leverages AI search to let you search vendors by intent (e.g. 'cloud infrastructure') rather than exact name."
+              how="Use the AI Search bar to find overlapping SaaS tools or redundant vendors. Review the risk score for each vendor—high-risk vendors should have their invoices scrutinized in the Approval Center."
+            />
+          </div>
           <p className="text-sm mt-1" style={{ color: "var(--color-text-secondary)" }}>
             {data?.total ?? "—"} vendors · AI risk scoring · semantic search
           </p>

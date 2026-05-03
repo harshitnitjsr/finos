@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { Landmark, TrendingDown, Calendar, InboxIcon, AlertCircle, PieChart, Target } from "lucide-react";
+import PageContextHelp from "@/components/global/PageContextHelp";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from "recharts";
 
 import { apiFetch } from "@/lib/api";
@@ -26,7 +27,7 @@ interface TreasuryResp { upcoming_payments: Record<string, unknown>[]; monthly_b
 interface PositionResp { positions: CashPosition[]; }
 interface ForecastResp { cash_flow_forecast: { month: string; inflow: number; outflow: number; net: number }[]; confidence?: number; runway_analysis?: RunwayAnalysis; }
 interface BudgetCategory { category: string; monthly_projections: { month: string; projected: number }[]; }
-interface BudgetResp { budget_by_category?: BudgetCategory[]; categories?: Record<string, unknown>[]; summary?: string; }
+interface BudgetResp { budget_by_category?: BudgetCategory[]; categories?: Record<string, unknown>[]; summary?: string; monthly_forecasts?: any[]; }
 
 function useTreasury() {
   return useQuery<TreasuryResp>({
@@ -79,7 +80,15 @@ export default function TreasuryPage() {
     <motion.div variants={cv} initial="hidden" animate="show" className="space-y-6">
       <motion.div variants={iv} className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Treasury Intelligence</h1>
+          <div className="flex items-center">
+            <h1 className="text-2xl font-bold text-white">Treasury Intelligence</h1>
+            <PageContextHelp
+              pageName="Treasury Intelligence"
+              why="Treasury management is critical for understanding organizational runway and liquidity. This page provides real-time visibility into cash flow."
+              what="You get live cash positions derived directly from invoice records, alongside an AI-powered forecast projecting your runway based on recent historical burn."
+              how="Use the AI Budget Forecast to identify categories where spend is trending up. The Runway analysis will tell you exactly how many days of cash remain based on current burn."
+            />
+          </div>
           <p className="text-sm mt-1" style={{ color: "var(--color-text-secondary)" }}>
             Cash positions derived from invoice records · AI-powered forecasting
           </p>
@@ -295,28 +304,37 @@ export default function TreasuryPage() {
                 </div>
               )}
               <div className="space-y-3">
-                {(budget.budget_by_category || budget.categories || []).map((cat: unknown, i) => {
-                  const c = cat as Record<string, unknown>;
-                  return (
-                    <div key={i} className="card p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <p className="text-sm font-bold text-white">{c.category as string || `Category ${i + 1}`}</p>
-                        {c.projected_total != null && (
-                          <span className="text-sm font-bold text-violet-400">${(c.projected_total as number).toLocaleString()}</span>
-                        )}
+                {(() => {
+                  const aggregated: Record<string, number> = {};
+                  if (budget.monthly_forecasts) {
+                    budget.monthly_forecasts.forEach((mf: any) => {
+                      if (mf.categories) {
+                        mf.categories.forEach((c: any) => {
+                          aggregated[c.category] = (aggregated[c.category] || 0) + (c.projected || c.allocated || 0);
+                        });
+                      }
+                    });
+                  } else if (budget.categories || budget.budget_by_category) {
+                     const cats = budget.categories || budget.budget_by_category || [];
+                     cats.forEach((c: any) => {
+                         aggregated[c.category] = (aggregated[c.category] || 0) + (c.projected || c.allocated || 0);
+                     });
+                  }
+                  
+                  return Object.entries(aggregated)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([catName, total], i) => (
+                    <div key={i} className="flex items-center justify-between p-3 rounded-xl" style={{ background: "var(--color-bg-elevated)", border: "1px solid var(--color-border)" }}>
+                      <div>
+                        <p className="text-sm font-semibold text-white">{catName}</p>
+                        <p className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>Projected for next {budgetMonths} month(s)</p>
                       </div>
-                      {Array.isArray(c.monthly_projections) && c.monthly_projections.length > 0 && (
-                        <ResponsiveContainer width="100%" height={60}>
-                          <BarChart data={c.monthly_projections as { month: string; projected: number }[]}>
-                            <XAxis dataKey="month" tick={{ fill: "#475569", fontSize: 10 }} axisLine={false} tickLine={false} />
-                            <Tooltip contentStyle={{ background: "#111827", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 11 }} formatter={(v: unknown) => [`$${(v as number).toLocaleString()}`, ""]} />
-                            <Bar dataKey="projected" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
-                          </BarChart>
-                        </ResponsiveContainer>
-                      )}
+                      <p className="text-sm font-bold text-violet-400">
+                        ${(total / 1000).toFixed(1)}K
+                      </p>
                     </div>
-                  );
-                })}
+                  ));
+                })()}
               </div>
             </>
           )}
