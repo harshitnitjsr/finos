@@ -294,7 +294,7 @@ export default function WorkspaceSidebar({
             style={{ boxShadow: "0 0 6px rgba(16,185,129,0.6)" }}
           />
           <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>
-            8 agents · LangGraph · GPT-4o
+            8 Active AI Agents · Fully Autonomous
           </span>
         </div>
       </div>

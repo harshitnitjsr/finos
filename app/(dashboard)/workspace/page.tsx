@@ -4,7 +4,7 @@ import WorkspaceLayout from "@/components/workspace/WorkspaceLayout";
 export const metadata: Metadata = {
   title: "AI Workspace — AFOS",
   description:
-    "Full-screen AI chat workspace powered by LangGraph multi-agent system. Ask questions about your finances, invoices, vendors, and more.",
+    "Full-screen AI chat workspace. Ask questions about your finances, invoices, vendors, and more.",
 };
 
 /**

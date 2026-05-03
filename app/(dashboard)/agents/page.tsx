@@ -17,7 +17,7 @@ const TASK_COLORS: Record<string, { bg: string; color: string }> = {
   forecast:      { bg: "rgba(245,158,11,0.1)",   color: "#f59e0b" },
   routing:       { bg: "rgba(6,182,212,0.1)",    color: "#06b6d4" },
 };
-const MODEL_LABELS: Record<string, string> = { "gpt-4o": "GPT-4o", "gpt-4o-mini": "GPT-4o Mini" };
+const MODEL_LABELS: Record<string, string> = { "gpt-4o": "Advanced Logic AI", "gpt-4o-mini": "Fast Logic AI" };
 
 interface AgentsResponse { agents: Record<string, unknown>[]; active: number; total: number; }
 interface ToolSummaryItem { tool_name: string; agent_name: string; total_calls: number; avg_duration_ms: number; success_rate: number; }
@@ -95,12 +95,12 @@ export default function AgentsPage() {
             </div>
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
               {[
-                { task: "Reasoning & Insights", model: "GPT-4o", color: "#8b5cf6" },
-                { task: "OCR Extraction", model: "GPT-4o Mini", color: "#3b82f6" },
-                { task: "Classification", model: "GPT-4o Mini", color: "#10b981" },
-                { task: "Compliance Checks", model: "GPT-4o", color: "#f43f5e" },
-                { task: "Financial Forecasting", model: "GPT-4o", color: "#f59e0b" },
-                { task: "Vector Embeddings", model: "text-embedding-3-small", color: "#06b6d4" },
+                { task: "Reasoning & Insights", model: "Advanced Logic AI", color: "#8b5cf6" },
+                { task: "OCR Extraction", model: "Fast Logic AI", color: "#3b82f6" },
+                { task: "Classification", model: "Fast Logic AI", color: "#10b981" },
+                { task: "Compliance Checks", model: "Advanced Logic AI", color: "#f43f5e" },
+                { task: "Financial Forecasting", model: "Advanced Logic AI", color: "#f59e0b" },
+                { task: "Vector Embeddings", model: "Semantic Indexer", color: "#06b6d4" },
               ].map(r => (
                 <div key={r.task} className="p-3 rounded-xl" style={{ background: "var(--color-bg-elevated)", border: "1px solid var(--color-border)" }}>
                   <p className="text-xs font-semibold text-white">{r.task}</p>

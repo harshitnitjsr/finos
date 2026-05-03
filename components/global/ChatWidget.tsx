@@ -502,7 +502,7 @@ export default function ChatWidget() {
                 <div>
                   <p className="text-sm font-bold text-white leading-none">AFOS AI</p>
                   <p className="text-xs mt-0.5 flex items-center gap-1.5" style={{ color: "var(--color-text-muted)" }}>
-                    <span>8 agents · LangGraph</span>
+                    <span>8 autonomous agents</span>
                     {totalToolCalls > 0 && (
                       <span className="text-blue-400">· {totalToolCalls} tools</span>
                     )}
@@ -537,7 +537,7 @@ export default function ChatWidget() {
                     >
                       <Activity size={22} className="text-blue-400" />
                     </div>
-                    <p className="text-white font-bold text-sm">LangGraph Financial Intelligence</p>
+                    <p className="text-white font-bold text-sm">AFOS Financial Intelligence</p>
                     <p className="text-xs mt-1.5 leading-relaxed" style={{ color: "var(--color-text-muted)" }}>
                       8 specialized agents · Real DB queries · Tool call tracing
                     </p>
@@ -622,7 +622,7 @@ export default function ChatWidget() {
               </div>
               <p className="text-xs mt-1.5 text-center" style={{ color: "var(--color-text-muted)" }}>
                 <Database size={9} className="inline mr-1" />
-                Live Postgres · Redis · Qdrant · GPT-4o
+                Secure Core · End-to-End Encryption
               </p>
             </div>
           </motion.div>
