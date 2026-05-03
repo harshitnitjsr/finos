@@ -102,8 +102,8 @@ export default function ExpensesPage() {
             <PageContextHelp
               pageName="Expense Intelligence"
               why="Tracking corporate expenses across multiple currencies and departments is complex and susceptible to fraud."
-              what="This page centralizes all corporate spending. It automatically categorizes expenses, identifies recurring SaaS subscriptions, and highlights statistical anomalies using the AI Insight Agent."
-              how="Switch between 'All Expenses', 'Anomalies', and 'Recurring' tabs to triage spend. Look for red anomaly badges which indicate the AI has flagged the transaction as highly irregular compared to historical data."
+              what="This page centralizes all corporate spending. It automatically categorizes expenses, identifies recurring subscriptions, and highlights statistical anomalies using the intelligent platform."
+              how="Switch between 'All Expenses', 'Anomalies', and 'Recurring' tabs to triage spend. Look for red anomaly badges which indicate the system has flagged the transaction as highly irregular compared to historical data."
             />
           </div>
           <p className="text-sm mt-1" style={{ color: "var(--color-text-secondary)" }}>
@@ -174,7 +174,7 @@ export default function ExpensesPage() {
           <button onClick={() => setEnrichAnomalies(v => !v)}
             className={`ml-auto px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${enrichAnomalies ? "bg-violet-500 text-white" : "text-slate-400"}`}
             style={!enrichAnomalies ? { background: "var(--color-bg-card)", border: "1px solid rgba(139,92,246,0.4)" } : {}}>
-            <Sparkles size={11} /> {enrichAnomalies ? "AI Enriched ✓" : "Enrich with AI"}
+            <Sparkles size={11} /> {enrichAnomalies ? "Insights Enabled ✓" : "Enable Insights"}
           </button>
         )}
       </motion.div>
@@ -185,8 +185,8 @@ export default function ExpensesPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <RepeatIcon size={16} className="text-blue-400" />
-              <h2 className="text-sm font-semibold text-white">Subscription &amp; SaaS Analysis</h2>
-              <span className="text-xs px-2 py-0.5 rounded" style={{ background: "rgba(59,130,246,0.1)", color: "#60a5fa" }}>vendor_agent · expense_agent</span>
+              <h2 className="text-sm font-semibold text-white">Subscription Analysis</h2>
+              <span className="text-xs px-2 py-0.5 rounded" style={{ background: "rgba(59,130,246,0.1)", color: "#60a5fa" }}>autonomous_engine</span>
             </div>
             <button onClick={handleAnalyzeSubscriptions} disabled={subscriptionLoading}
               className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold text-white"
@@ -300,7 +300,7 @@ export default function ExpensesPage() {
 
               {subscriptionData.recommendations && subscriptionData.recommendations.length > 0 && (
                 <div className="card p-4">
-                  <p className="text-xs font-semibold text-emerald-400 mb-3">AI Recommendations</p>
+                  <p className="text-xs font-semibold text-emerald-400 mb-3">System Recommendations</p>
                   <ul className="space-y-2">
                     {subscriptionData.recommendations.map((r, i) => (
                       <li key={i} className="flex items-start gap-2 text-sm text-white">
@@ -362,7 +362,7 @@ export default function ExpensesPage() {
                 )}
                 {exp.ai_explanation && (
                   <div className="mt-2 px-3 py-2 rounded-lg text-xs" style={{ background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.15)", color: "#c4b5fd" }}>
-                    <span className="font-semibold text-violet-400">AI: </span>{exp.ai_explanation}
+                    <span className="font-semibold text-violet-400">Insight: </span>{exp.ai_explanation}
                   </div>
                 )}
                 {exp.similar_past_anomalies && exp.similar_past_anomalies.length > 0 && (

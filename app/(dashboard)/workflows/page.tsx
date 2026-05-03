@@ -61,8 +61,8 @@ export default function WorkflowsPage() {
             <PageContextHelp
               pageName="Workflow Monitor"
               why="Financial operations often require multi-step processes (like invoice approval routing) that need to be tracked reliably."
-              what="This page provides a live view of the automated pipeline engine. You can watch invoices move through their processing steps: Data extraction → Duplicate checking → AI scoring → Final Approval."
-              how="If an invoice processing workflow fails due to a system error, you can click the 'Retry' button directly from this page to resume execution from the exact point of failure."
+              what="This page provides a live view of the orchestration engine. You can watch invoices move through their processing steps: Data validation → Duplicate checking → Intelligent analysis → Final Approval."
+              how="If a process fails due to a system error, you can click the 'Retry' button directly from this page to resume execution from the exact point of failure."
             />
           </div>
           <p className="text-sm mt-1" style={{ color: "var(--color-text-secondary)" }}>

@@ -85,12 +85,12 @@ export default function TreasuryPage() {
             <PageContextHelp
               pageName="Treasury Intelligence"
               why="Treasury management is critical for understanding organizational runway and liquidity. This page provides real-time visibility into cash flow."
-              what="You get live cash positions derived directly from invoice records, alongside an AI-powered forecast projecting your runway based on recent historical burn."
-              how="Use the AI Budget Forecast to identify categories where spend is trending up. The Runway analysis will tell you exactly how many days of cash remain based on current burn."
+              what="You get live cash positions derived directly from invoice records, alongside autonomous projections of your runway based on recent historical burn."
+              how="Use the Budget Forecast to identify categories where spend is trending up. The Runway analysis will tell you exactly how many days of cash remain based on current burn."
             />
           </div>
           <p className="text-sm mt-1" style={{ color: "var(--color-text-secondary)" }}>
-            Cash positions derived from invoice records · AI-powered forecasting
+            Cash positions derived from invoice records · Autonomous projections
           </p>
         </div>
         {/* Tabs */}
@@ -200,9 +200,9 @@ export default function TreasuryPage() {
             <motion.div variants={iv} className="card p-5">
               <div className="flex items-center gap-2 mb-4">
                 <AlertCircle size={16} className="text-violet-400" />
-                <h2 className="text-sm font-semibold text-white">AI Cash Flow Forecast</h2>
+                <h2 className="text-sm font-semibold text-white">Cash Flow Projections</h2>
                 <span className="text-xs px-2 py-0.5 rounded" style={{ background: "rgba(139,92,246,0.1)", color: "#8b5cf6" }}>
-                  {forecast.confidence ? `${(forecast.confidence * 100).toFixed(0)}% confidence` : "AI generated"}
+                  {forecast.confidence ? `${(forecast.confidence * 100).toFixed(0)}% confidence` : "System generated"}
                 </span>
               </div>
               <ResponsiveContainer width="100%" height={200}>
@@ -275,8 +275,8 @@ export default function TreasuryPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <PieChart size={16} className="text-violet-400" />
-              <h2 className="text-sm font-semibold text-white">AI Budget Forecast</h2>
-              <span className="text-xs px-2 py-0.5 rounded" style={{ background: "rgba(139,92,246,0.1)", color: "#8b5cf6" }}>forecasting_agent</span>
+              <h2 className="text-sm font-semibold text-white">Budget Forecast</h2>
+              <span className="text-xs px-2 py-0.5 rounded" style={{ background: "rgba(139,92,246,0.1)", color: "#8b5cf6" }}>forecasting_engine</span>
             </div>
             <div className="flex gap-2">
               {[1, 3, 6, 12].map(m => (
@@ -347,7 +347,7 @@ export default function TreasuryPage() {
           <div className="flex items-center gap-2">
             <Target size={16} className="text-emerald-400" />
             <h2 className="text-sm font-semibold text-white">Runway Analysis</h2>
-            <span className="text-xs px-2 py-0.5 rounded" style={{ background: "rgba(16,185,129,0.1)", color: "#10b981" }}>forecasting_agent</span>
+            <span className="text-xs px-2 py-0.5 rounded" style={{ background: "rgba(16,185,129,0.1)", color: "#10b981" }}>forecasting_engine</span>
           </div>
 
           {!runway ? (
@@ -431,7 +431,7 @@ export default function TreasuryPage() {
               {/* Reduction Opportunities */}
               {Array.isArray(runway.reduction_opportunities) && runway.reduction_opportunities.length > 0 && (
                 <div className="card p-5">
-                  <p className="text-xs font-semibold text-emerald-400 mb-3">Reduction Opportunities</p>
+                  <p className="text-xs font-semibold text-emerald-400 mb-3">Optimization Opportunities</p>
                   <div className="space-y-2">
                     {(runway.reduction_opportunities as { category: string; potential_reduction: number; action: string }[]).map((opp, i) => (
                       <div key={i} className="p-3 rounded-xl" style={{ background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.15)" }}>

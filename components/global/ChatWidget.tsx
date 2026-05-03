@@ -453,7 +453,7 @@ export default function ChatWidget() {
         }}
         whileHover={{ scale: 1.08, boxShadow: "0 12px 40px rgba(59,130,246,0.5)" }}
         whileTap={{ scale: 0.95 }}
-        title="Open AFOS AI Chat"
+        title="Open Orqentra AI Chat"
       >
         <AnimatePresence mode="wait">
           {open
@@ -500,7 +500,7 @@ export default function ChatWidget() {
                   <Bot size={15} className="text-white" />
                 </div>
                 <div>
-                  <p className="text-sm font-bold text-white leading-none">AFOS AI</p>
+                  <p className="text-sm font-bold text-white leading-none">Orqentra AI</p>
                   <p className="text-xs mt-0.5 flex items-center gap-1.5" style={{ color: "var(--color-text-muted)" }}>
                     <span>8 autonomous agents</span>
                     {totalToolCalls > 0 && (
@@ -537,7 +537,7 @@ export default function ChatWidget() {
                     >
                       <Activity size={22} className="text-blue-400" />
                     </div>
-                    <p className="text-white font-bold text-sm">AFOS Financial Intelligence</p>
+                    <p className="text-white font-bold text-sm">Orqentra Financial Intelligence</p>
                     <p className="text-xs mt-1.5 leading-relaxed" style={{ color: "var(--color-text-muted)" }}>
                       8 specialized agents · Real DB queries · Tool call tracing
                     </p>

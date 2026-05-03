@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import WorkspaceLayout from "@/components/workspace/WorkspaceLayout";
 
 export const metadata: Metadata = {
-  title: "AI Workspace — AFOS",
+  title: "Intelligence Workspace — Orqentra",
   description:
-    "Full-screen AI chat workspace. Ask questions about your finances, invoices, vendors, and more.",
+    "Unified intelligence workspace. Ask questions about your finances, invoices, vendors, and more.",
 };
 
 /**

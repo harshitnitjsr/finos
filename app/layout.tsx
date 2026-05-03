@@ -7,12 +7,12 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "AFOS — AI Financial Operating System",
-  description: "Autonomous Financial Operating System. AI-native financial execution infrastructure.",
-  keywords: ["AI finance", "autonomous finance", "invoice processing", "expense management"],
+  title: "Orqentra — The Financial Operating System",
+  description: "Next-generation autonomous financial operating system powered by elite orchestration engines.",
+  keywords: ["Financial OS", "autonomous orchestration", "intelligent finance", "Orqentra", "FOS"],
   openGraph: {
-    title: "AFOS — AI Financial Operating System",
-    description: "Autonomous Financial Operating System powered by AI agents",
+    title: "Orqentra — The Financial Operating System",
+    description: "Autonomous financial orchestration powered by the world's first FOS.",
     type: "website",
   },
 };

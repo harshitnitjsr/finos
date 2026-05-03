@@ -59,8 +59,8 @@ export default function ApprovalsPage() {
             <PageContextHelp
               pageName="Approval Center"
               why="Not all actions can be fully autonomous. Certain high-risk or high-value transactions require human oversight before funds are dispersed."
-              what="This page acts as a centralized inbox for all tasks that the AI assistants have escalated to humans. You get full context on why the AI escalated the task, including risk scores and policy checks."
-              how="Review the 'AI Analysis' box for each pending item. If the AI flagged a policy violation, evaluate whether to approve or reject the payment. Your action here signals the automated system to resume."
+              what="This page acts as a centralized inbox for all tasks that the autonomous systems have escalated for human review. You get full context on why the item was flagged, including risk scores and policy checks."
+              how="Review the 'System Analysis' box for each pending item. If a policy violation was flagged, evaluate whether to approve or reject the payment. Your action here signals the system to continue the process."
             />
           </div>
           <p className="text-sm mt-1" style={{ color: "var(--color-text-secondary)" }}>
@@ -121,7 +121,7 @@ export default function ApprovalsPage() {
                           </span>
                         </div>
                         <p className="text-xs mt-1 truncate" style={{ color: "var(--color-text-muted)" }}>
-                          AI: {appr.ai_recommendation as string} — {(appr.ai_explanation as string)?.slice(0, 80)}…
+                          Insight: {appr.ai_recommendation as string} — {(appr.ai_explanation as string)?.slice(0, 80)}…
                         </p>
                         <div className="flex items-center gap-3 mt-1.5">
                           <span className="text-xs" style={{ color: "var(--color-text-secondary)" }}>
@@ -151,7 +151,7 @@ export default function ApprovalsPage() {
                     <div className="pt-4 space-y-3">
                       {!!(appr.ai_explanation as string) && (
                         <div className="p-3 rounded-xl" style={{ background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.15)" }}>
-                          <p className="text-xs font-semibold text-blue-400 mb-1">AI Analysis</p>
+                          <p className="text-xs font-semibold text-blue-400 mb-1">System Analysis</p>
                           <p className="text-xs" style={{ color: "var(--color-text-secondary)" }}>{appr.ai_explanation as string}</p>
                         </div>
                       )}

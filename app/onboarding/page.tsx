@@ -156,7 +156,7 @@ export default function OnboardingPage() {
           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
             <Zap className="w-5 h-5 text-white" />
           </div>
-          <span className="text-xl font-black text-white">AFOS</span>
+          <span className="text-xl font-black text-white">ORQENTRA</span>
         </div>
 
         {/* Card */}
@@ -401,7 +401,7 @@ export default function OnboardingPage() {
                     {saving ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
-                      <>Launch AFOS <ChevronRight className="w-4 h-4" /></>
+                      <>Launch Orqentra <ChevronRight className="w-4 h-4" /></>
                     )}
                   </button>
                 </div>

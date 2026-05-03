@@ -89,8 +89,8 @@ export default function DashboardPage() {
             <h1 className="text-2xl font-bold text-white tracking-tight">Financial Operations</h1>
             <PageContextHelp
               pageName="Financial Operations"
-              why="The Dashboard serves as the central command center for the entire AFOS platform, providing a holistic view of your financial health at a glance."
-              what="You get high-level KPIs, multi-currency spend trends, pending manual approvals, and live alerts directly from the AI agents."
+              why="The Dashboard serves as the central command center for the entire Orqentra platform, providing a holistic view of your financial health at a glance."
+              what="You get high-level KPIs, multi-currency spend trends, pending manual approvals, and live alerts directly from the autonomous intelligence system."
               how="Use the KPI cards to quickly spot anomalies or bottlenecks. The spend trend chart helps you visualize exactly how your rolling 30-day burn compares to historical data."
             />
           </div>
@@ -139,7 +139,7 @@ export default function DashboardPage() {
               </>
             ) : (
               <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
-                Insight agent offline — add OPENAI_API_KEY to backend/.env to enable
+                Intelligence platform offline — please contact support to enable.
               </p>
             )}
           </div>
@@ -167,7 +167,7 @@ export default function DashboardPage() {
           {
             label: "AI Anomalies", sub: "Last 30 days",
             value: isLoading ? null : kpis.anomaly_count != null ? String(kpis.anomaly_count) : "—",
-            detail: (kpis.anomaly_count as number) > 0 ? "Flagged by AI agents" : "No anomalies detected",
+            detail: (kpis.anomaly_count as number) > 0 ? "Flagged by the system" : "No anomalies detected",
             trend: (kpis.anomaly_count as number) > 0 ? "up" as const : null, trendVal: undefined,
             Icon: AlertTriangle, color: "#f43f5e", glow: "rgba(244,63,94,0.1)", border: "rgba(244,63,94,0.2)",
           },
@@ -306,7 +306,7 @@ export default function DashboardPage() {
                       Invoice #{(a.invoice_id as string)?.slice(0, 8) || "—"}
                     </p>
                     <p className="text-xs mt-0.5 truncate" style={{ color: "var(--color-text-muted)" }}>
-                      {a.ai_recommendation as string || "Pending AI review"}
+                      {a.ai_recommendation as string || "Pending intelligent review"}
                     </p>
                   </div>
                   <div className="text-right flex-shrink-0">

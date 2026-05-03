@@ -65,16 +65,16 @@ export default function AgentsPage() {
       <motion.div variants={iv} className="flex items-center justify-between">
         <div>
           <div className="flex items-center">
-            <h1 className="text-2xl font-bold text-white">AI Agents</h1>
+            <h1 className="text-2xl font-bold text-white">Autonomous Intelligence</h1>
             <PageContextHelp
-              pageName="AI Agents"
-              why="The system is driven by a team of autonomous AI assistants. You need visibility into exactly what these assistants are doing in the background."
-              what="This page provides a live view of the AI team. You can monitor the health of specific assistants (like the Categorization AI or Insight AI) and view their recent actions."
-              how="Switch to the 'Tool Execution Logs' tab to see exactly what external systems the AI assistants are interacting with in real-time. This provides complete transparency into their autonomous actions."
+              pageName="Autonomous Intelligence"
+              why="The system is driven by a team of autonomous orchestration engines. You need visibility into exactly what these systems are doing in the background."
+              what="This page provides a live view of the orchestration team. You can monitor the health of specific modules (like the Categorization Engine or Insight Engine) and view their recent actions."
+              how="Switch to the 'Execution Logs' tab to see exactly what external systems the autonomous assistants are interacting with in real-time. This provides complete transparency into their actions."
             />
           </div>
           <p className="text-sm mt-1" style={{ color: "var(--color-text-secondary)" }}>
-            {data ? `${data.active}/${data.total} agents active` : "Loading agent registry…"}
+            {data ? `${data.active}/${data.total} modules active` : "Loading orchestration registry…"}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -83,7 +83,7 @@ export default function AgentsPage() {
               <button key={tab} onClick={() => setActiveTab(tab)}
                 className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all ${activeTab === tab ? "bg-blue-500 text-white" : "text-slate-400 hover:text-white"}`}
                 style={activeTab !== tab ? { background: "var(--color-bg-card)", border: "1px solid var(--color-border)" } : {}}>
-                {tab === "agents" ? "Agents" : `Tool Logs (${toolLogs?.total ?? "…"})`}
+                {tab === "agents" ? "Modules" : `Execution Logs (${toolLogs?.total ?? "…"})`}
               </button>
             ))}
           </div>
@@ -104,12 +104,12 @@ export default function AgentsPage() {
             </div>
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
               {[
-                { task: "Reasoning & Insights", model: "Advanced Logic AI", color: "#8b5cf6" },
-                { task: "OCR Extraction", model: "Fast Logic AI", color: "#3b82f6" },
-                { task: "Classification", model: "Fast Logic AI", color: "#10b981" },
-                { task: "Compliance Checks", model: "Advanced Logic AI", color: "#f43f5e" },
-                { task: "Financial Forecasting", model: "Advanced Logic AI", color: "#f59e0b" },
-                { task: "Vector Embeddings", model: "Semantic Indexer", color: "#06b6d4" },
+                { task: "Reasoning & Insights", model: "Advanced Logic", color: "#8b5cf6" },
+                { task: "Data Extraction", model: "Fast Logic", color: "#3b82f6" },
+                { task: "Classification", model: "Fast Logic", color: "#10b981" },
+                { task: "Compliance Checks", model: "Advanced Logic", color: "#f43f5e" },
+                { task: "Financial Forecasting", model: "Advanced Logic", color: "#f59e0b" },
+                { task: "Intelligence Indexing", model: "Orchestration Indexer", color: "#06b6d4" },
               ].map(r => (
                 <div key={r.task} className="p-3 rounded-xl" style={{ background: "var(--color-bg-elevated)", border: "1px solid var(--color-border)" }}>
                   <p className="text-xs font-semibold text-white">{r.task}</p>
@@ -204,7 +204,7 @@ export default function AgentsPage() {
             <div className="card p-5">
               <div className="flex items-center gap-2 mb-4">
                 <List size={16} className="text-blue-400" />
-                <h2 className="text-sm font-semibold text-white">Tool Usage Summary</h2>
+                <h2 className="text-sm font-semibold text-white">Execution Summary</h2>
                 <span className="text-xs px-2 py-0.5 rounded" style={{ background: "rgba(59,130,246,0.1)", color: "#60a5fa" }}>24h</span>
               </div>
               <ResponsiveContainer width="100%" height={160}>
@@ -239,7 +239,7 @@ export default function AgentsPage() {
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <Activity size={16} className="text-emerald-400" />
-                <h2 className="text-sm font-semibold text-white">Tool Call Log</h2>
+                <h2 className="text-sm font-semibold text-white">Execution Log</h2>
                 <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>{toolLogs?.total ?? 0} total</span>
               </div>
               <div className="flex gap-2">

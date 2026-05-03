@@ -48,7 +48,7 @@ export default function SignInPage() {
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/30">
               <Zap className="w-6 h-6 text-white" />
             </div>
-            <span className="text-2xl font-black text-white tracking-tight">AFOS</span>
+            <span className="text-2xl font-black text-white tracking-tight">ORQENTRA</span>
           </div>
         </div>
 
@@ -108,7 +108,7 @@ export default function SignInPage() {
         </div>
 
         <div className="relative z-10">
-          <p className="text-white/20 text-xs">© 2026 AFOS, Inc. All rights reserved.</p>
+          <p className="text-white/20 text-xs">© 2026 Orqentra, Inc. All rights reserved.</p>
         </div>
       </div>
 
@@ -125,12 +125,12 @@ export default function SignInPage() {
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
               <Zap className="w-5 h-5 text-white" />
             </div>
-            <span className="text-xl font-black text-white">AFOS</span>
+            <span className="text-xl font-black text-white">ORQENTRA</span>
           </div>
 
           <div className="mb-8">
             <h2 className="text-3xl font-black text-white mb-2">Welcome back</h2>
-            <p className="text-white/40">Sign in to your financial operating system.</p>
+            <p className="text-white/40">Sign in to your orchestration platform.</p>
           </div>
 
           {/* Google Sign-in button */}

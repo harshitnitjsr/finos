@@ -92,12 +92,12 @@ export default function VendorsPage() {
             <PageContextHelp
               pageName="Vendor Intelligence"
               why="Managing third-party vendors is critical for preventing fraud and tracking holistic spend across disparate invoices and expenses."
-              what="This page maintains a unified view of all active vendors. It leverages AI search to let you search vendors by intent (e.g. 'cloud infrastructure') rather than exact name."
-              how="Use the AI Search bar to find overlapping SaaS tools or redundant vendors. Review the risk score for each vendor—high-risk vendors should have their invoices scrutinized in the Approval Center."
+              what="This page maintains a unified view of all active vendors. It leverages intelligent search to let you search vendors by intent (e.g. 'cloud infrastructure') rather than exact name."
+              how="Use the search bar to find overlapping tools or redundant vendors. Review the risk score for each vendor—high-risk vendors should have their invoices scrutinized in the Approval Center."
             />
           </div>
           <p className="text-sm mt-1" style={{ color: "var(--color-text-secondary)" }}>
-            {data?.total ?? "—"} vendors · AI risk scoring · semantic search
+            {data?.total ?? "—"} vendors · intelligent risk scoring · smart search
           </p>
         </div>
         <button onClick={() => setShowCreate(true)}
@@ -109,7 +109,7 @@ export default function VendorsPage() {
 
       {/* Semantic Search */}
       <motion.div variants={iv} className="card p-4">
-        <p className="text-xs font-semibold text-slate-400 mb-2 flex items-center gap-1"><Search size={12} /> Semantic Vendor Search (AI)</p>
+        <p className="text-xs font-semibold text-slate-400 mb-2 flex items-center gap-1"><Search size={12} /> Intelligent Vendor Search</p>
         <div className="flex gap-2">
           <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
             onKeyDown={e => e.key === "Enter" && handleSemanticSearch()}
@@ -269,7 +269,7 @@ export default function VendorsPage() {
                       style={{ background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.2)" }}>
                       <div className="flex items-center gap-2">
                         <Heart size={14} className="text-violet-400" />
-                        <span className="text-sm font-semibold text-white">AI Health Analysis</span>
+                        <span className="text-sm font-semibold text-white">System Health Analysis</span>
                       </div>
                       <button onClick={() => setHealthCheck(!healthCheck)}
                         className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all ${healthCheck ? "bg-violet-500 text-white" : "text-slate-400"}`}
@@ -282,7 +282,7 @@ export default function VendorsPage() {
                     {healthCheck && detail.vendor_health && (
                       <div className="p-4 rounded-xl space-y-2"
                         style={{ background: "var(--color-bg-elevated)", border: "1px solid var(--color-border)" }}>
-                        <p className="text-xs font-semibold text-slate-400 flex items-center gap-1"><Shield size={12} /> Vendor Health Score</p>
+                        <p className="text-xs font-semibold text-slate-400 flex items-center gap-1"><Shield size={12} /> System Health Score</p>
                         {Object.entries(detail.vendor_health as Record<string, unknown>).slice(0, 6).map(([k, v]) => (
                           <div key={k} className="flex items-center justify-between text-sm">
                             <span style={{ color: "var(--color-text-muted)" }}>{k.replace(/_/g, " ")}</span>
@@ -296,7 +296,7 @@ export default function VendorsPage() {
                     {healthCheck && detail.health_analysis && (
                       <div className="p-4 rounded-xl"
                         style={{ background: "rgba(16,185,129,0.05)", border: "1px solid rgba(16,185,129,0.15)" }}>
-                        <p className="text-xs font-semibold text-emerald-400 mb-2">AI Insight Analysis</p>
+                        <p className="text-xs font-semibold text-emerald-400 mb-2">System Insight Analysis</p>
                         {typeof detail.health_analysis === "string" ? (
                           <p className="text-sm text-white">{detail.health_analysis as string}</p>
                         ) : (

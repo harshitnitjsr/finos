@@ -82,7 +82,7 @@ function EmptyState({ onPrompt }: { onPrompt: (text: string) => void }) {
         className="text-center mb-8"
       >
         <h2 className="text-2xl font-bold mb-2" style={{ color: "var(--color-text-primary)" }}>
-          AFOS AI Workspace
+          Orqentra AI Workspace
         </h2>
         <p className="text-sm leading-relaxed max-w-sm" style={{ color: "var(--color-text-muted)" }}>
           Your intelligent financial co-pilot. Ask anything about expenses, invoices, vendors, treasury, compliance, and more.

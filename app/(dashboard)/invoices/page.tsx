@@ -97,8 +97,8 @@ export default function InvoicesPage() {
             <PageContextHelp
               pageName="Invoice Intelligence"
               why="Managing incoming invoices manually is slow, error-prone, and lacks security. This page acts as the entry point for fully automated invoice processing."
-              what="You get a drag-and-drop upload zone that triggers our smart AI assistants. They automatically read the document, extract line items, perform duplicate checks, and route the invoice for payment."
-              how="Upload any PDF or image invoice. The AI will instantly classify it and flag any policy violations or anomalies. You can track its status in the table below."
+              what="You get a drag-and-drop upload zone that triggers our smart autonomous systems. They automatically read the document, extract line items, perform duplicate checks, and route the invoice for payment."
+              how="Upload any PDF or image invoice. The system will instantly classify it and flag any policy violations or anomalies. You can track its status in the table below."
             />
           </div>
           <p className="text-sm mt-1" style={{ color: "var(--color-text-secondary)" }}>
@@ -133,12 +133,12 @@ export default function InvoicesPage() {
             <Upload size={28} className="mx-auto mb-2 text-slate-500" />
             <p className="text-sm font-medium text-white">Drop invoice PDF or image here</p>
             <p className="text-xs mt-1" style={{ color: "var(--color-text-muted)" }}>
-              AI pipeline: OCR → Field Extraction → Duplicate Check → Risk Scoring → Approval Queue
+              Intelligent Pipeline: Deep Extraction → Data Validation → Duplicate Check → Risk Analysis → Approval Queue
             </p>
           </>
         )}
         {uploadMutation.isSuccess && (
-          <p className="text-xs text-emerald-400 mt-2">✓ Uploaded — AI processing in background</p>
+          <p className="text-xs text-emerald-400 mt-2">✓ Uploaded — system processing in background</p>
         )}
         {uploadMutation.isError && (
           <p className="text-xs text-rose-400 mt-2">✗ Upload failed — check backend connection</p>
@@ -233,7 +233,7 @@ export default function InvoicesPage() {
                   ["Tax", `${CURRENCY_SYMBOLS[selected.currency as string] || "$"}${(selected.tax_amount as number)?.toLocaleString()}`],
                   ["Risk Level", selected.risk_level as string],
                   ["Risk Score", `${(selected.risk_score as number)?.toFixed(1)}/100`],
-                  ["AI Confidence", `${((selected.ai_confidence as number) * 100).toFixed(0)}%`],
+                  ["System Confidence", `${((selected.ai_confidence as number) * 100).toFixed(0)}%`],
                   ["Duplicate", (selected.is_duplicate as boolean) ? "⚠️ Yes" : "No"],
                   ["Due Date", selected.due_date ? new Date(selected.due_date as string).toLocaleDateString() : "—"],
                 ].map(([label, val]) => (
@@ -253,7 +253,7 @@ export default function InvoicesPage() {
               )}
               {!!(selected.extracted_fields) && Object.keys(selected.extracted_fields as object).length > 0 && (
                 <div>
-                  <p className="text-xs font-semibold text-white mb-2">AI Extracted Fields</p>
+                  <p className="text-xs font-semibold text-white mb-2">System Extracted Fields</p>
                   <div className="space-y-1.5">
                     {Object.entries(selected.extracted_fields as Record<string, unknown>)
                       .filter(([k]) => k !== "line_items")
@@ -273,7 +273,7 @@ export default function InvoicesPage() {
                   onClick={() => startTemporalMutation.mutate(selected.id as string)}
                   disabled={startTemporalMutation.isPending || selected.status === "processing"}
                   className="flex-1 py-2 bg-blue-500/20 text-blue-400 font-semibold rounded-lg text-xs hover:bg-blue-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-                  {startTemporalMutation.isPending || selected.status === "processing" ? "AI Processing..." : "Start AI Workflow"}
+                  {startTemporalMutation.isPending || selected.status === "processing" ? "Processing..." : "Start Workflow"}
                 </button>
                 {selected.status === "awaiting_approval" && (
                   <button 

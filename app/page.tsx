@@ -57,6 +57,54 @@ const MagneticWrapper = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
+const BackgroundParticles = () => {
+  const [windowSize, setWindowSize] = useState({ width: 2000, height: 1000 });
+
+  useEffect(() => {
+    setWindowSize({ width: window.innerWidth, height: window.innerHeight });
+    const handleResize = () => setWindowSize({ width: window.innerWidth, height: window.innerHeight });
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  return (
+    <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+      {Array.from({ length: 60 }).map((_, i) => {
+        const size = Math.random() * 3 + 2;
+        const color = i % 3 === 0 ? "#10b981" : i % 3 === 1 ? "#84cc16" : "#3b82f6";
+        const duration = Math.random() * 20 + 10;
+        const delay = Math.random() * 20;
+        const left = Math.random() * 100;
+        
+        return (
+          <motion.div
+            key={i}
+            className="absolute rounded-full"
+            style={{
+              width: size,
+              height: size,
+              left: `${left}%`,
+              background: color,
+              boxShadow: `0 0 10px ${color}`,
+            }}
+            initial={{ y: "110vh", opacity: 0 }}
+            animate={{ 
+              y: "-10vh",
+              opacity: [0, 0.4, 0.4, 0]
+            }}
+            transition={{ 
+              duration: duration,
+              delay: delay,
+              repeat: Infinity,
+              ease: "linear"
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+};
+
 export default function HomePage() {
   const [mounted, setMounted] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
@@ -107,12 +155,44 @@ export default function HomePage() {
         <div 
           className="absolute inset-0 z-0 opacity-40 transition-opacity duration-300"
           style={{
-            background: `radial-gradient(800px circle at ${mousePos.x}px ${mousePos.y}px, rgba(16, 185, 129, 0.08), transparent 80%)`
+            background: `radial-gradient(1000px circle at ${mousePos.x}px ${mousePos.y}px, rgba(16, 185, 129, 0.12), transparent 80%)`
           }}
         />
         <div className="absolute inset-0 bg-grid opacity-20" />
-        <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-emerald-600/10 blur-[150px]" />
-        <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] rounded-full bg-lime-600/10 blur-[150px]" />
+        
+        {/* Animated Aurora Blobs */}
+        <motion.div 
+          animate={{ 
+            x: [0, 100, 0],
+            y: [0, 50, 0],
+            scale: [1, 1.2, 1],
+          }}
+          transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+          className="absolute top-[-10%] left-[-10%] w-[60%] h-[60%] rounded-full bg-emerald-600/15 blur-[120px]" 
+        />
+        <motion.div 
+          animate={{ 
+            x: [0, -80, 0],
+            y: [0, 100, 0],
+            scale: [1, 1.1, 1],
+          }}
+          transition={{ duration: 25, repeat: Infinity, ease: "linear" }}
+          className="absolute bottom-[-15%] right-[-5%] w-[55%] h-[55%] rounded-full bg-lime-600/10 blur-[150px]" 
+        />
+        <motion.div 
+          animate={{ 
+            x: [0, 50, 0],
+            y: [0, -100, 0],
+            scale: [1, 1.3, 1],
+          }}
+          transition={{ duration: 18, repeat: Infinity, ease: "linear" }}
+          className="absolute top-[20%] right-[-10%] w-[40%] h-[40%] rounded-full bg-indigo-600/10 blur-[130px]" 
+        />
+        
+        <BackgroundParticles />
+        
+        {/* OS Scanlines */}
+        <div className="absolute inset-0 z-10 pointer-events-none opacity-[0.03] bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))] bg-[length:100%_2px,3px_100%]" />
       </div>
 
       {/* Global Status Ticker */}
@@ -135,13 +215,13 @@ export default function HomePage() {
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-lime-600 flex items-center justify-center shadow-lg shadow-emerald-500/20 group-hover:rotate-12 transition-transform duration-500">
               <Zap className="w-6 h-6 text-white" />
             </div>
-            <span className="text-2xl font-black tracking-tight shiny-text uppercase">AFOS</span>
+            <span className="text-2xl font-black tracking-tight shiny-text uppercase">Orqentra</span>
           </div>
           
           <div className="hidden md:flex items-center gap-10 text-xs font-black tracking-widest text-white/30 uppercase">
             <Link href="#features" className="hover:text-white transition-colors">Infrastructure</Link>
-            <Link href="#pipeline" className="hover:text-white transition-colors">Neural Mesh</Link>
-            <Link href="/dashboard" className="hover:text-white text-emerald-500 transition-colors">AI Core</Link>
+            <Link href="#pipeline" className="hover:text-white transition-colors">Autonomous Grid</Link>
+            <Link href="/dashboard" className="hover:text-white text-emerald-500 transition-colors">Core Intelligence</Link>
           </div>
 
           <div className="flex items-center gap-6">
@@ -176,8 +256,8 @@ export default function HomePage() {
               style={{ opacity, scale }}
               className="text-5xl md:text-[7.5rem] font-black tracking-tight leading-[0.85] mb-12"
             >
-              FINANCE. <br />
-              <span className="text-emerald-600 italic">AUTONOMOUS.</span>
+              FINANCIAL <br />
+              <span className="text-emerald-600 italic">OS.</span>
             </motion.h1>
 
             <motion.p 
@@ -185,11 +265,10 @@ export default function HomePage() {
               whileInView={{ opacity: 1, y: 0 }}
               className="max-w-3xl mx-auto text-xl md:text-2xl text-white/30 font-medium mb-16 leading-relaxed"
             >
-              The manual era is over. AFOS is an autonomous intelligence layer 
-              for your corporate treasury. Built to ingest, verify, and settle 
-              every transaction with zero human drift. <br />
+              The manual era is over. Orqentra is the world&apos;s first <strong>Financial Operating System (FOS)</strong>. 
+              A unified autonomous orchestration layer that ingests, verifies, and settles every transaction with absolute precision. <br />
               <span className="text-emerald-500/60 block mt-4 font-black">
-                MOVE FROM RECORD-KEEPING TO AUTONOMOUS ORCHESTRATION.
+                NOT JUST A TOOL. A FULL-STACK AUTONOMOUS FINANCIAL GRID.
               </span>
             </motion.p>
 
@@ -295,6 +374,77 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* FOS Definition Section */}
+        <section className="py-32 px-6 bg-white/[0.01] border-y border-white/5">
+          <div className="max-w-7xl mx-auto">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-24 items-center">
+              <motion.div
+                initial={{ opacity: 0, x: -50 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true }}
+              >
+                <h2 className="text-4xl md:text-6xl font-black tracking-tighter mb-8 uppercase">What is a <br/><span className="text-emerald-500">Financial OS?</span></h2>
+                <div className="space-y-8">
+                  <div className="flex gap-6">
+                    <div className="w-12 h-12 rounded-xl bg-emerald-600/10 flex items-center justify-center flex-shrink-0">
+                      <Layers className="text-emerald-500 w-6 h-6" />
+                    </div>
+                    <div>
+                      <h4 className="text-xl font-black uppercase mb-2">Unified Execution Layer</h4>
+                      <p className="text-white/40 font-medium">Instead of siloed tools, Orqentra provides a single execution engine for invoices, expenses, and treasury.</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-6">
+                    <div className="w-12 h-12 rounded-xl bg-emerald-600/10 flex items-center justify-center flex-shrink-0">
+                      <Fingerprint className="text-emerald-500 w-6 h-6" />
+                    </div>
+                    <div>
+                      <h4 className="text-xl font-black uppercase mb-2">Deterministic Identity</h4>
+                      <p className="text-white/40 font-medium">Every vendor, transaction, and employee is mapped within a unified identity graph for instant verification.</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-6">
+                    <div className="w-12 h-12 rounded-xl bg-emerald-600/10 flex items-center justify-center flex-shrink-0">
+                      <Terminal className="text-emerald-500 w-6 h-6" />
+                    </div>
+                    <div>
+                      <h4 className="text-xl font-black uppercase mb-2">Autonomous Settlement</h4>
+                      <p className="text-white/40 font-medium">The OS doesn&apos;t just record data; it executes payments and reconciles accounts autonomously.</p>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                whileInView={{ opacity: 1, scale: 1 }}
+                viewport={{ once: true }}
+                className="relative p-8 rounded-[3rem] bg-emerald-600/10 border border-emerald-500/20 overflow-hidden"
+              >
+                <div className="absolute inset-0 bg-grid-white opacity-5" />
+                <div className="relative z-10">
+                  <div className="text-[10px] font-black uppercase tracking-[0.3em] text-emerald-500/60 mb-8">System Architecture</div>
+                  <div className="space-y-4">
+                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
+                      <span className="text-xs font-black uppercase">Ingestion Engine</span>
+                      <span className="text-[10px] text-emerald-500 font-mono">ACTIVE</span>
+                    </div>
+                    <div className="w-px h-8 bg-emerald-500/20 mx-auto" />
+                    <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
+                      <span className="text-xs font-black uppercase">Verification Swarm</span>
+                      <span className="text-[10px] text-emerald-500 font-mono">RESOLVING...</span>
+                    </div>
+                    <div className="w-px h-8 bg-emerald-500/20 mx-auto" />
+                    <div className="p-4 rounded-2xl bg-emerald-600 border border-white/20 flex items-center justify-between shadow-2xl">
+                      <span className="text-xs font-black uppercase">Settlement Rail</span>
+                      <span className="text-[10px] text-white font-mono">EXECUTED</span>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          </div>
+        </section>
+
         {/* Features Bento */}
         <section id="features" className="py-64 px-6 relative">
           <div className="max-w-7xl mx-auto">
@@ -306,10 +456,36 @@ export default function HomePage() {
               className="mb-24 text-left"
             >
               <h2 className="text-6xl md:text-8xl font-black tracking-tighter mb-8 leading-[0.8]">
-                DESIGNED FOR <br />
-                <span className="text-white/20">TOTAL CONTROL.</span>
+                ELITE PRODUCT <br />
+                <span className="text-white/20">CAPABILITIES.</span>
               </h2>
             </motion.div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-24">
+              {[
+                { title: "Invoice Automation", desc: "Autonomous extraction and processing of global invoices with zero manual data entry.", icon: <Sparkles className="w-6 h-6 text-emerald-500" /> },
+                { title: "Expense Management", desc: "Real-time spend tracking and policy enforcement across your entire organization.", icon: <Activity className="w-6 h-6 text-emerald-500" /> },
+                { title: "Treasury Control", desc: "Live cash positions and autonomous runway projections across multiple currencies.", icon: <BarChart3 className="w-6 h-6 text-emerald-500" /> },
+                { title: "Approval Center", desc: "Unified task management for exception handling and human-in-the-loop verification.", icon: <Shield className="w-6 h-6 text-emerald-500" /> },
+                { title: "Vendor Health", desc: "Deep analytics into vendor relationships, spend patterns, and reliability metrics.", icon: <Globe className="w-6 h-6 text-emerald-500" /> },
+                { title: "Intelligent Chat", desc: "Direct interface to your financial graph through an advanced orchestration engine.", icon: <Bot className="w-6 h-6 text-emerald-500" /> },
+              ].map((feat, i) => (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.05 }}
+                  viewport={{ once: true }}
+                  className="p-8 rounded-[2.5rem] bg-white/[0.02] border border-white/5 hover:border-emerald-500/30 transition-all group"
+                >
+                  <div className="w-12 h-12 rounded-xl bg-emerald-600/10 flex items-center justify-center mb-6 group-hover:bg-emerald-600 transition-colors">
+                    <div className="group-hover:text-white transition-colors">{feat.icon}</div>
+                  </div>
+                  <h4 className="text-xl font-black uppercase mb-4 tracking-tighter">{feat.title}</h4>
+                  <p className="text-sm text-white/30 font-medium leading-relaxed">{feat.desc}</p>
+                </motion.div>
+              ))}
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-6 md:grid-rows-2 gap-6 h-full md:h-[900px]">
               <motion.div 
@@ -358,7 +534,7 @@ export default function HomePage() {
                   <span className="text-[10px] font-black uppercase tracking-widest opacity-40">Live Protocol</span>
                 </div>
                 <h3 className="text-2xl font-black uppercase tracking-tighter text-left">ZERO-CLICK INVOICING</h3>
-                <p className="text-xs font-bold leading-tight opacity-60">Upload a PDF. AFOS OCRs, verifies, and pays. All in 12ms.</p>
+                <p className="text-xs font-bold leading-tight opacity-60">Upload a PDF. Orqentra processes, verifies, and settles. Instantly.</p>
               </motion.div>
 
               <motion.div 
@@ -375,6 +551,11 @@ export default function HomePage() {
 
         {/* Aggressive Statement Section */}
         <section className="py-80 px-6 bg-white text-black relative overflow-hidden">
+          {/* Subtle White Section Patterns */}
+          <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-grid-black" />
+          <div className="absolute top-0 left-1/4 w-px h-full bg-black/5" />
+          <div className="absolute top-0 right-1/4 w-px h-full bg-black/5" />
+          
           <motion.div 
             initial={{ opacity: 0, scale: 0.8 }}
             whileInView={{ opacity: 1, scale: 1 }}
@@ -389,7 +570,7 @@ export default function HomePage() {
             </h2>
             <div className="flex flex-col items-center gap-12">
               <p className="text-2xl md:text-3xl font-black max-w-3xl opacity-50 uppercase tracking-tighter leading-tight">
-                Legacy ERPs are just slow databases. AFOS is an active execution engine for your balance sheet. 
+                Legacy ERPs are just slow databases. Orqentra is an active execution engine for your balance sheet. 
                 Eliminate manual latency and move from record-keeping to autonomous orchestration.
               </p>
               <MagneticWrapper>
@@ -397,7 +578,7 @@ export default function HomePage() {
                   href="/auth/signin"
                   className="inline-flex items-center gap-6 px-16 py-8 bg-black text-white text-3xl font-black rounded-3xl hover:scale-105 transition-transform shadow-2xl uppercase tracking-tighter"
                 >
-                  UPGRADE TO AFOS
+                  UPGRADE TO ORQENTRA
                   <ArrowRight className="w-10 h-10" />
                 </Link>
               </MagneticWrapper>
@@ -463,7 +644,7 @@ export default function HomePage() {
                     <div className="w-8 h-8 rounded-full bg-emerald-600 flex items-center justify-center">
                       <Sparkles className="w-4 h-4 text-white" />
                     </div>
-                    <span className="text-xs font-black uppercase tracking-widest text-white/40">AFOS Assistant</span>
+                    <span className="text-xs font-black uppercase tracking-widest text-white/40">Orqentra Assistant</span>
                   </div>
                   <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 </div>
@@ -495,14 +676,14 @@ export default function HomePage() {
                 <div className="w-12 h-12 rounded-2xl bg-emerald-600 flex items-center justify-center">
                   <Zap className="w-7 h-7 text-white" />
                 </div>
-                <span className="text-4xl font-black tracking-tighter uppercase text-white">AFOS</span>
+                <span className="text-4xl font-black tracking-tighter uppercase text-white">Orqentra</span>
               </div>
-              <p className="text-2xl text-white/20 font-black tracking-tight leading-snug">The world&apos;s first emerald-grade financial OS.</p>
+              <p className="text-2xl text-white/20 font-black tracking-tight leading-snug">The world&apos;s first elite orchestration OS.</p>
             </div>
           </div>
           <div className="max-w-7xl mx-auto mt-40 pt-12 border-t border-white/5 flex justify-between items-center text-[10px] font-black tracking-widest text-white/10 uppercase">
-            <span>© 2026 AFOS INC.</span>
-            <span>EMERALD CORE PROTOCOL</span>
+            <span>© 2026 ORQENTRA INC.</span>
+            <span>CORE ORCHESTRATION PROTOCOL</span>
           </div>
         </footer>
       </main>

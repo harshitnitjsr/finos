@@ -360,7 +360,7 @@ async def get_notifications(
         count, latest_time = appr_row
         notifications.append({
             "id": f"appr-{latest_time.timestamp()}",
-            "title": f"✅ {count} approvals pending your review",
+            "title": f"Review Required: {count} pending approvals",
             "type": "info",
             "time": format_time_ago(latest_time) if latest_time else "Just now",
             "timestamp": latest_time.timestamp() if latest_time else datetime.utcnow().timestamp()
@@ -376,7 +376,7 @@ async def get_notifications(
         amount_str = f"{CURRENCIES.get(exp.currency, {'symbol': exp.currency})['symbol']}{exp.amount:,.0f}"
         notifications.append({
             "id": f"anom-{exp.id}",
-            "title": f"🔴 Anomaly: {amount_str} — {exp.vendor_name or 'Unknown'}",
+            "title": f"Policy Alert: {amount_str} — {exp.vendor_name or 'Unknown vendor'}",
             "type": "danger",
             "time": format_time_ago(exp.created_at),
             "timestamp": exp.created_at.timestamp()

@@ -15,7 +15,7 @@ const NAV_ITEMS = [
   { href: "/approvals", icon: CheckSquare, label: "Approvals", group: "main", badge: "3" },
   { href: "/vendors", icon: Building2, label: "Vendors", group: "main" },
   { href: "/workflows", icon: Workflow, label: "Workflows", group: "ops" },
-  { href: "/agents", icon: Bot, label: "AI Agents", group: "ops" },
+  { href: "/agents", icon: Bot, label: "Intelligence", group: "ops" },
   { href: "/workspace", icon: MessageSquare, label: "AI Workspace", group: "ops", aiLabel: true },
   { href: "/treasury", icon: Landmark, label: "Treasury", group: "ops" },
   { href: "/analytics", icon: BarChart3, label: "Analytics", group: "ops" },
@@ -53,8 +53,8 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
               exit={{ opacity: 0, x: -10 }}
               transition={{ duration: 0.15 }}
             >
-              <div className="font-black text-white text-base tracking-tight">AFOS</div>
-              <div className="text-xs font-medium" style={{ color: "var(--color-text-muted)" }}>Financial OS</div>
+              <div className="font-black text-white text-base tracking-tight uppercase">Orqentra</div>
+              <div className="text-[10px] font-black uppercase tracking-widest" style={{ color: "var(--color-text-muted)" }}>Financial Operating System</div>
             </motion.div>
           )}
         </AnimatePresence>
