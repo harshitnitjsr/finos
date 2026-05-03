@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Bot, User, Copy, Check, RefreshCw, Edit2,
@@ -97,10 +97,12 @@ interface MessageBubbleProps {
   onEdit?: (content: string) => void;
   onRegenerate?: () => void;
   isCopied: boolean;
+  /** Optional live thinking overlay (only passed for streaming assistant messages) */
+  thinkingOverlay?: React.ReactNode | null;
 }
 
 export default function WorkspaceMessageBubble({
-  msg, onCopy, onEdit, onRegenerate, isCopied,
+  msg, onCopy, onEdit, onRegenerate, isCopied, thinkingOverlay,
 }: MessageBubbleProps) {
   const isUser = msg.role === "user";
   const agentColor = msg.agent_name ? (AGENT_COLORS[msg.agent_name] ?? "#8b5cf6") : "#10b981";
@@ -164,17 +166,27 @@ export default function WorkspaceMessageBubble({
             boxShadow: isUser ? "0 4px 20px rgba(37,99,235,0.2)" : "none",
           }}
         >
-          {/* Streaming animation */}
+          {/* Streaming state — overlay takes over from plain dots */}
           {msg.isStreaming ? (
-            <div className="flex items-center gap-1.5 py-1">
-              {[0, 1, 2].map((i) => (
-                <motion.span
-                  key={i}
-                  className="w-2 h-2 rounded-full bg-violet-400"
-                  animate={{ opacity: [0.3, 1, 0.3], y: [0, -4, 0] }}
-                  transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
-                />
-              ))}
+            <div>
+              {thinkingOverlay}
+              {/* Show growing text once tokens start */}
+              {msg.content.length > 0 && (
+                <MarkdownRenderer content={msg.content} />
+              )}
+              {/* Fallback pulsing dots if no overlay and no content yet */}
+              {!thinkingOverlay && msg.content.length === 0 && (
+                <div className="flex items-center gap-1.5 py-1">
+                  {[0, 1, 2].map((i) => (
+                    <motion.span
+                      key={i}
+                      className="w-2 h-2 rounded-full bg-violet-400"
+                      animate={{ opacity: [0.3, 1, 0.3], y: [0, -4, 0] }}
+                      transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
           ) : isUser ? (
             <p className="text-sm leading-relaxed text-white" style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>

@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, FileText, CreditCard, CheckSquare, Workflow,
   Bot, Landmark, BarChart3, Settings, ChevronLeft, ChevronRight,
-  Zap, Shield, MessageSquare
+  Zap, Shield, MessageSquare, Building2
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { href: "/invoices", icon: FileText, label: "Invoices", group: "main" },
   { href: "/expenses", icon: CreditCard, label: "Expenses", group: "main" },
   { href: "/approvals", icon: CheckSquare, label: "Approvals", group: "main", badge: "3" },
+  { href: "/vendors", icon: Building2, label: "Vendors", group: "main" },
   { href: "/workflows", icon: Workflow, label: "Workflows", group: "ops" },
   { href: "/agents", icon: Bot, label: "AI Agents", group: "ops" },
   { href: "/workspace", icon: MessageSquare, label: "AI Workspace", group: "ops", aiLabel: true },

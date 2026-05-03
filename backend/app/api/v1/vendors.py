@@ -14,6 +14,8 @@ from app.core.vector_store import vector_store
 from app.core.model_router import model_router
 from app.models.models import Vendor, Invoice, Expense
 from app.api.deps import get_org_id
+from app.agents.vendor_agent import vendor_agent
+from app.agents.insight_agent import insight_agent
 
 router = APIRouter()
 
@@ -82,11 +84,11 @@ async def create_vendor(
         name=body.name,
         email=body.email,
         category=body.category,
-        website=body.website,
         payment_currency=body.payment_currency,
         risk_level="low",
         risk_score=10.0,
         is_active=True,
+        extra_metadata={"website": body.website} if body.website else {},
     )
     db.add(vendor)
     await db.flush()
@@ -112,12 +114,17 @@ async def create_vendor(
 
 
 @router.get("/{vendor_id}")
-async def get_vendor(vendor_id: str, db: AsyncSession = Depends(get_db)):
+async def get_vendor(
+    vendor_id: str,
+    org_id: str = Depends(get_org_id),
+    db: AsyncSession = Depends(get_db),
+    health_check: bool = False,
+):
     vendor = await db.get(Vendor, vendor_id)
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor not found")
 
-    # Attach invoice and expense history
+    # Invoice history
     inv_result = await db.execute(
         select(func.count(Invoice.id), func.sum(Invoice.total_amount), Invoice.currency)
         .where(Invoice.vendor_id == vendor_id)
@@ -128,7 +135,35 @@ async def get_vendor(vendor_id: str, db: AsyncSession = Depends(get_db)):
         for r in inv_result.all()
     ]
 
-    return {**_vendor_to_dict(vendor), "invoice_stats": invoice_stats}
+    result = {**_vendor_to_dict(vendor), "invoice_stats": invoice_stats}
+
+    if health_check:
+        # ── vendor_agent.assess_vendor_health() + insight_agent.analyze_vendor_health() ──
+        try:
+            exp_result = await db.execute(
+                select(Invoice.total_amount, Invoice.currency, Invoice.status, Invoice.created_at)
+                .where(Invoice.vendor_id == vendor_id)
+                .order_by(Invoice.created_at.desc())
+                .limit(20)
+            )
+            tx_history = [
+                {"amount": float(r[0] or 0), "currency": r[1], "status": r[2]}
+                for r in exp_result.all()
+            ]
+            vendor_data = _vendor_to_dict(vendor)
+
+            # vendor_agent health (rule-based + AI scoring)
+            health = await vendor_agent.assess_vendor_health(vendor_data, tx_history)
+            result["vendor_health"] = health
+
+            # insight_agent deep analysis
+            deep = await insight_agent.analyze_vendor_health(vendor_data, tx_history)
+            result["health_analysis"] = deep
+        except Exception:
+            result["vendor_health"] = None
+            result["health_analysis"] = None
+
+    return result
 
 
 @router.patch("/{vendor_id}")
@@ -162,12 +197,13 @@ async def semantic_vendor_search(
 
 
 def _vendor_to_dict(v: Vendor) -> dict:
+    meta: dict = v.extra_metadata or {}
     return {
         "id": v.id,
         "name": v.name,
         "email": v.email,
         "category": v.category,
-        "website": v.website,
+        "website": meta.get("website"),          # stored in extra_metadata, not a column
         "risk_level": v.risk_level,
         "risk_score": float(v.risk_score or 0),
         "is_verified": v.is_verified,

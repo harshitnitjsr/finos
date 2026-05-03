@@ -13,6 +13,8 @@ from app.core.vector_store import vector_store
 from app.core.model_router import model_router
 from app.models.models import Expense
 from app.agents.expense_agent import expense_agent
+from app.agents.insight_agent import insight_agent
+from app.agents.vendor_agent import vendor_agent
 from app.api.deps import get_org_id
 
 router = APIRouter()
@@ -197,7 +199,9 @@ async def expenses_by_category(
 async def get_anomalies(
     org_id: str = Depends(get_org_id),
     db: AsyncSession = Depends(get_db),
+    enrich: bool = True,
 ):
+    """List flagged anomalies. With enrich=true, adds AI explanation + similar past anomalies."""
     result = await db.execute(
         select(Expense).where(
             Expense.org_id == org_id,
@@ -205,19 +209,66 @@ async def get_anomalies(
         ).order_by(desc(Expense.anomaly_score)).limit(20)
     )
     expenses = result.scalars().all()
-    return {"anomalies": [_expense_to_dict(e) for e in expenses]}
+    anomalies = [_expense_to_dict(e) for e in expenses]
+
+    if enrich and anomalies:
+        # ── insight_agent.explain_anomaly() + find_similar_anomalies() ────────
+        for anomaly_dict in anomalies:
+            try:
+                # AI explanation
+                explanation = await insight_agent.explain_anomaly(anomaly_dict)
+                anomaly_dict["ai_explanation"] = explanation
+            except Exception:
+                anomaly_dict["ai_explanation"] = None
+
+            try:
+                # Qdrant: find similar past anomalies for context
+                embed_text = f"{anomaly_dict.get('description','')} {anomaly_dict.get('category','')} {anomaly_dict.get('amount',0)}"
+                embedding = await model_router.embed(embed_text)
+                if embedding:
+                    similar = await vector_store.find_similar_anomalies(
+                        embedding=embedding,
+                        org_id=org_id,
+                        threshold=0.78,
+                        limit=3,
+                    )
+                    anomaly_dict["similar_past_anomalies"] = similar
+            except Exception:
+                anomaly_dict["similar_past_anomalies"] = []
+
+    return {"anomalies": anomalies, "total": len(anomalies)}
 
 
 @router.post("/analyze/subscriptions")
-async def analyze_subscriptions(db: AsyncSession = Depends(get_db)):
+async def analyze_subscriptions(
+    org_id: str = Depends(get_org_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """AI subscription analysis + SaaS duplicate detection via vendor_agent."""
     result = await db.execute(
         select(Expense).where(
-            Expense.org_id == ORG_ID,
+            Expense.org_id == org_id,
             Expense.is_recurring == True
         ).limit(100)
     )
     recurring = result.scalars().all()
-    analysis = await expense_agent.analyze_subscriptions([_expense_to_dict(e) for e in recurring])
+    recurring_dicts = [_expense_to_dict(e) for e in recurring]
+
+    # expense_agent: categorize/analyze subscriptions
+    analysis = await expense_agent.analyze_subscriptions(recurring_dicts)
+
+    # vendor_agent: detect SaaS duplicates (e.g. two Slack subscriptions)
+    try:
+        vendor_summary = [
+            {"vendor_name": e.get("vendor_name", ""), "amount": e.get("amount", 0),
+             "currency": e.get("currency", "USD"), "category": e.get("category", "")}
+            for e in recurring_dicts if e.get("vendor_name")
+        ]
+        duplicates = await vendor_agent.detect_saas_duplicates(vendor_summary)
+        analysis["saas_duplicates"] = duplicates
+    except Exception:
+        analysis["saas_duplicates"] = {}
+
     return analysis
 
 

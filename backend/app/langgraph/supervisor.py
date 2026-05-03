@@ -192,12 +192,25 @@ def make_agent_node(agent_key: str):
     async def agent_node(state: AFOSState) -> dict:
         run_id = state.get("run_id", str(uuid.uuid4()))
         org_id = state.get("org_id")
-        
+
         from app.core.context import org_id_var
         org_id_var.set(org_id)
 
+        from app.core.redis_client import cache as _cache
+
         agent_id = cfg["id"]
         agent_name = cfg["name"]
+
+        # ── Store initial reasoning context in Redis (5min TTL) ───────────
+        await _cache.set_reasoning_context(run_id, {
+            "agent_id": agent_id,
+            "agent_name": agent_name,
+            "intent": state.get("intent", "unknown"),
+            "org_id": org_id,
+            "started_at": datetime.utcnow().isoformat(),
+            "tool_calls": [],
+            "status": "running",
+        })
 
         # Tool registry — raw tools for LLM binding + direct async invocation
         raw_tools = cfg["tools"]
@@ -249,6 +262,19 @@ def make_agent_node(agent_key: str):
                     "tool": tool_name,
                     "args": tool_args,
                     "turn": turn,
+                })
+
+                # ── Update reasoning context with live tool call progress ─────
+                await _cache.set_reasoning_context(run_id, {
+                    "agent_id": agent_id,
+                    "agent_name": agent_name,
+                    "intent": state.get("intent", "unknown"),
+                    "org_id": org_id,
+                    "status": "calling_tool",
+                    "current_tool": tool_name,
+                    "current_turn": turn,
+                    "tool_calls": tool_call_records,
+                    "updated_at": datetime.utcnow().isoformat(),
                 })
 
                 tool_obj = tool_map.get(tool_name)
@@ -305,6 +331,24 @@ def make_agent_node(agent_key: str):
             f"LangGraph: {agent_name} done in {duration_ms}ms | "
             f"{len(tool_call_records)} tools | {total_tokens} tokens"
         )
+
+        # ── Mark reasoning context complete + clear from Redis ─────────────────
+        await _cache.set_reasoning_context(run_id, {
+            "agent_id": agent_id,
+            "agent_name": agent_name,
+            "intent": state.get("intent", "unknown"),
+            "org_id": org_id,
+            "status": "done",
+            "tool_calls": tool_call_records,
+            "total_tokens": total_tokens,
+            "duration_ms": duration_ms,
+            "completed_at": datetime.utcnow().isoformat(),
+        })
+        # Give clients one last chance to read it (1s window), then clear
+        import asyncio
+        asyncio.get_event_loop().call_later(2, lambda: asyncio.ensure_future(
+            _cache.clear_reasoning_context(run_id)
+        ))
 
         return {
             "messages": [AIMessage(content=final_text)],

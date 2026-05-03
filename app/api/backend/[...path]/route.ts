@@ -7,9 +7,18 @@
  * - Strips cookies before forwarding (backend doesn't need them)
  * - Passes SSE (text/event-stream) responses through without buffering
  *   so streaming endpoints work correctly
+ *
+ * CRITICAL: `dynamic = 'force-dynamic'` prevents Next.js from buffering
+ * the upstream response. Without this, SSE streams are collected in full
+ * before being delivered to the client, breaking all streaming.
  */
 import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
+
+// Force dynamic rendering — prevents response caching/buffering
+export const dynamic = "force-dynamic";
+// Node.js runtime required because Auth.js relies on native Node crypto modules
+export const runtime = "nodejs";
 
 const BACKEND = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -50,13 +59,14 @@ async function handler(
 
   const bodyBuffer =
     req.method !== "GET" && req.method !== "HEAD"
-      ? Buffer.from(await req.arrayBuffer())
+      ? await req.arrayBuffer()
       : undefined;
 
   const backendRes = await fetch(url, {
     method: req.method,
     headers,
     body: bodyBuffer,
+    cache: "no-store", // CRITICAL: disables Next.js internal fetch caching/buffering
   });
 
   const contentType = backendRes.headers.get("Content-Type") ?? "application/json";

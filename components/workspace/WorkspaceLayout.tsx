@@ -15,6 +15,10 @@ export default function WorkspaceLayout() {
     isSending,
     isLoadingMessages,
     error,
+    activeRunId,
+    activeLiveTools,
+    activeAgentName,
+    activeIntent,
     createChat,
     selectChat,
     deleteChat,
@@ -46,6 +50,10 @@ export default function WorkspaceLayout() {
           messages={messages}
           isLoadingMessages={isLoadingMessages}
           isSending={isSending}
+          activeRunId={activeRunId}
+          activeLiveTools={activeLiveTools}
+          activeAgentName={activeAgentName}
+          activeIntent={activeIntent}
           onSend={sendMessage}
         />
 

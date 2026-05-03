@@ -40,6 +40,14 @@ interface UseWorkspaceReturn {
   isSending: boolean;
   isLoadingMessages: boolean;
   error: string | null;
+  /** run_id of the currently active SSE stream — used to poll /chat/run/{id}/context */
+  activeRunId: string | null;
+  /** Tool calls accumulated from SSE tool_call events — zero-latency, no polling needed */
+  activeLiveTools: { tool: string; args: Record<string, unknown>; turn: number }[];
+  /** Agent name from the SSE agent event — available immediately */
+  activeAgentName: string | null;
+  /** Intent from the SSE agent event */
+  activeIntent: string | null;
   createChat: () => Promise<WorkspaceChat | null>;
   selectChat: (chatId: string) => Promise<void>;
   deleteChat: (chatId: string) => Promise<void>;
@@ -56,6 +64,11 @@ export function useWorkspace(): UseWorkspaceReturn {
   const [isSending, setIsSending] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  // SSE-sourced live state — populated synchronously from events, no polling delay
+  const [activeLiveTools, setActiveLiveTools] = useState<{ tool: string; args: Record<string, unknown>; turn: number }[]>([]);
+  const [activeAgentName, setActiveAgentName] = useState<string | null>(null);
+  const [activeIntent, setActiveIntent] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const activeChat = chats.find((c) => c.id === activeChatId) ?? null;
@@ -227,6 +240,17 @@ export function useWorkspace(): UseWorkspaceReturn {
           agentName = (evt.agent as string) ?? agentName;
           agentId   = (evt.agent_id as string) ?? agentId;
           intent    = (evt.intent as string) ?? intent;
+          // Capture run_id for context polling
+          const emittedRunId = evt.run_id as string | undefined;
+          if (emittedRunId) {
+            console.debug("[AFOS] ✅ run_id captured:", emittedRunId, "agent:", agentName);
+            setActiveRunId(emittedRunId);
+          } else {
+            console.warn("[AFOS] ❌ agent event has no run_id:", evt);
+          }
+          // Immediately expose agent name/intent — zero latency, no polling delay
+          setActiveAgentName(agentName);
+          setActiveIntent(intent);
 
           // Show agent badge immediately
           setMessages((prev) =>
@@ -243,6 +267,8 @@ export function useWorkspace(): UseWorkspaceReturn {
             turn: (evt.turn as number) ?? 0,
           };
           toolCalls = [...toolCalls, tc];
+          // Push to live overlay state immediately (no polling delay)
+          setActiveLiveTools((prev) => [...prev, tc]);
 
           setMessages((prev) =>
             prev.map((m) =>
@@ -342,6 +368,10 @@ export function useWorkspace(): UseWorkspaceReturn {
       );
     } finally {
       setIsSending(false);
+      setActiveRunId(null);
+      setActiveLiveTools([]);
+      setActiveAgentName(null);
+      setActiveIntent(null);
       abortRef.current = null;
     }
   }, [activeChatId, isSending, createChat]);
@@ -355,6 +385,10 @@ export function useWorkspace(): UseWorkspaceReturn {
     isSending,
     isLoadingMessages,
     error,
+    activeRunId,
+    activeLiveTools,
+    activeAgentName,
+    activeIntent,
     createChat,
     selectChat,
     deleteChat,

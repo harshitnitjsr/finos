@@ -9,6 +9,7 @@ from app.core.database import get_db
 from app.core.redis_client import cache
 from app.models.models import Approval, Invoice
 from app.api.deps import get_org_id
+from app.agents.approval_agent import approval_agent
 
 router = APIRouter()
 
@@ -101,6 +102,27 @@ async def _decide(
     if approval.status != "pending":
         raise HTTPException(status_code=400, detail=f"Approval already {approval.status}")
 
+    # ── approval_agent: check auto-approval threshold ────────────────────
+    auto_check = await approval_agent.check_auto_approval({
+        "amount": float(approval.amount or 0),
+        "vendor_verified": True,  # trust DB record
+        "vendor_risk_score": float(approval.risk_score or 0),
+    })
+    # If auto_approve but human said reject — human wins; log the mismatch
+    if auto_check["auto_approve"] and decision == "reject":
+        notes = f"[Auto-approve eligible but manually rejected] {notes or ''}".strip()
+
+    # ── approval_agent: generate AI summary for audit trail ──────────────
+    try:
+        ai_summary = await approval_agent.generate_approval_summary(
+            transaction={"amount": float(approval.amount or 0), "currency": approval.currency or "USD"},
+            violations=list(approval.policy_checks or []),
+        )
+        if not notes:
+            notes = ai_summary[:500]
+    except Exception:
+        pass  # non-critical
+
     approval.status = decision
     approval.decision_by = decision_by
     approval.decision_at = datetime.utcnow()
@@ -140,6 +162,13 @@ async def _decide(
     await cache.invalidate_pattern("dashboard")
     await cache.invalidate_pattern("invoices")
 
+    # ── Clear Redis workflow state + reset retry counter on completion ────────
+    if approval.invoice_id:
+        workflow_id = f"invoice-workflow-{approval.invoice_id}"
+        await cache.clear_workflow_state(workflow_id)
+        if decision == "approve":
+            await cache.reset_retry_count(workflow_id)
+
     # ── Index workflow outcome in Qdrant (background, non-blocking) ───────────
     if invoice_data:
         import asyncio
@@ -177,6 +206,25 @@ async def _index_workflow_outcome(
             logger.warning(f"Workflow Qdrant: embed returned empty for invoice {invoice_id}")
             return
 
+        # ── search_similar_workflows: find past matching approvals for context ──
+        similar_count = 0
+        similar_outcome = None
+        try:
+            similar = await vector_store.search_similar_workflows(
+                embedding=embedding,
+                org_id=invoice_data.get("org_id", ""),
+                threshold=0.82,
+                limit=5,
+            )
+            similar_count = len(similar)
+            # Most common outcome from similar past approvals
+            if similar:
+                outcomes = [s.get("outcome") for s in similar if s.get("outcome")]
+                similar_outcome = max(set(outcomes), key=outcomes.count) if outcomes else None
+            logger.debug(f"Workflow RAG: {similar_count} similar past workflows found, dominant outcome={similar_outcome}")
+        except Exception:
+            pass
+
         await vector_store.upsert_workflow_context(
             workflow_id=f"wf_{invoice_id}",
             embedding=embedding,
@@ -188,6 +236,8 @@ async def _index_workflow_outcome(
                 "amount": invoice_data.get("amount", 0),
                 "risk_level": invoice_data.get("risk_level", "low"),
                 "outcome": decision,
+                "similar_past_count": similar_count,
+                "similar_dominant_outcome": similar_outcome,
                 "completed_at": datetime.utcnow().isoformat(),
             },
         )

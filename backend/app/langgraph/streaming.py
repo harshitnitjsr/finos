@@ -32,6 +32,7 @@ from loguru import logger
 from app.langgraph.supervisor import AGENT_REGISTRY, INTENT_TO_AGENT, CLASSIFY_PROMPT
 from app.core.config import settings
 from app.langgraph.tool_logger import call_tool_with_logging
+from app.core.redis_client import cache as _cache
 
 
 def _sse(data: dict) -> str:
@@ -81,8 +82,20 @@ async def stream_agent_response(
     agent_id = cfg["id"]
     agent_name = cfg["name"]
 
+    # ── Store initial reasoning context in Redis (5min TTL) ───────────────
+    await _cache.set_reasoning_context(run_id, {
+        "agent_id": agent_id,
+        "agent_name": agent_name,
+        "intent": intent,
+        "org_id": org_id,
+        "session_id": session_id,
+        "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(start)),
+        "tool_calls": [],
+        "status": "running",
+    })
+
     # Emit agent metadata so the UI can show "Expense Intelligence · expense_query"
-    yield _sse({"type": "agent", "agent": agent_name, "agent_id": agent_id, "intent": intent})
+    yield _sse({"type": "agent", "agent": agent_name, "agent_id": agent_id, "intent": intent, "run_id": run_id})
 
     # ── 2. Set up agent tools ─────────────────────────────────────────────────
     raw_tools = cfg["tools"]
@@ -138,6 +151,20 @@ async def stream_agent_response(
                 record = {"tool": tool_name, "args": tool_args, "turn": turn}
                 tool_call_records.append(record)
                 yield _sse({"type": "tool_call", **record})
+
+                # ── Update reasoning context with live tool progress ─────────
+                await _cache.set_reasoning_context(run_id, {
+                    "agent_id": agent_id,
+                    "agent_name": agent_name,
+                    "intent": intent,
+                    "org_id": org_id,
+                    "session_id": session_id,
+                    "status": "calling_tool",
+                    "current_tool": tool_name,
+                    "current_turn": turn,
+                    "tool_calls": tool_call_records,
+                    "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                })
 
                 tool_obj = tool_map.get(tool_name)
                 if tool_obj is None:
@@ -199,3 +226,21 @@ async def stream_agent_response(
         "total_tokens": total_tokens,
         "duration_ms": duration_ms,
     })
+
+    # ── 6. Mark reasoning context done and schedule cleanup ────────────────
+    await _cache.set_reasoning_context(run_id, {
+        "agent_id": agent_id,
+        "agent_name": agent_name,
+        "intent": intent,
+        "org_id": org_id,
+        "session_id": session_id,
+        "status": "done",
+        "tool_calls": tool_call_records,
+        "total_tokens": total_tokens,
+        "duration_ms": duration_ms,
+        "completed_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    })
+    import asyncio
+    asyncio.get_event_loop().call_later(2, lambda: asyncio.ensure_future(
+        _cache.clear_reasoning_context(run_id)
+    ))

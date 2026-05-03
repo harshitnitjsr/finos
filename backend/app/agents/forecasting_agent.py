@@ -9,7 +9,7 @@ from loguru import logger
 from app.core.model_router import model_router, ModelTask
 from app.core.agent_logger import AgentTimer
 
-RUNWAY_PROMPT = """Analyze company financial data and forecast runway. Return JSON:
+RUNWAY_PROMPT = """Analyze company financial data and forecast runway. Return ONLY valid JSON with no markdown:
 {
   "current_burn_rate": float, "runway_months": float, "runway_days": int,
   "scenarios": {"optimistic": {"burn_rate": float, "runway_months": float}, "base": {"burn_rate": float, "runway_months": float}, "pessimistic": {"burn_rate": float, "runway_months": float}},
@@ -18,11 +18,53 @@ RUNWAY_PROMPT = """Analyze company financial data and forecast runway. Return JS
   "confidence": float
 }"""
 
-BUDGET_PROMPT = """Forecast budget by category for next 3 months. Return JSON:
+BUDGET_PROMPT = """Forecast budget by category. Return ONLY valid JSON with no markdown:
 {
   "monthly_forecasts": [{"month": str, "categories": [{"category": str, "projected": float}]}],
   "total_projected_3m": float, "growth_categories": [str], "budget_alerts": [str], "recommendations": [str]
 }"""
+
+
+def _extract_json(text: str) -> dict:
+    """
+    Robustly extract a JSON object from LLM output that may contain:
+    - markdown code fences (```json ... ```)
+    - leading/trailing prose
+    - nested objects (handles brace counting, not just first/last {})
+    """
+    # Strip markdown fences first
+    text = re.sub(r'```(?:json)?\s*', '', text).strip()
+    text = re.sub(r'```\s*$', '', text).strip()
+
+    # Find the outermost { } by brace counting
+    start = text.find('{')
+    if start == -1:
+        raise ValueError("No JSON object found in response")
+
+    depth = 0
+    in_string = False
+    escape = False
+    for i, ch in enumerate(text[start:], start):
+        if escape:
+            escape = False
+            continue
+        if ch == '\\' and in_string:
+            escape = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if ch == '{':
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+            if depth == 0:
+                return json.loads(text[start:i + 1])
+
+    raise ValueError("Unmatched braces in JSON response")
+
 
 
 class ForecastingAgent:
@@ -45,12 +87,10 @@ class ForecastingAgent:
                 timer.tokens_used = result.total_tokens
                 timer.prompt_tokens = result.prompt_tokens
                 timer.completion_tokens = result.completion_tokens
-                m = re.search(r'\{.*\}', result.content, re.DOTALL)
-                if m:
-                    data = json.loads(m.group())
-                    timer.output_summary = f"Runway: {data.get('runway_months', 0):.1f}mo"
-                    timer.confidence = float(data.get("confidence", 0.75))
-                    return data
+                m = _extract_json(result.content)
+                timer.output_summary = f"Runway: {m.get('runway_months', 0):.1f}mo"
+                timer.confidence = float(m.get("confidence", 0.75))
+                return m
             except Exception as e:
                 logger.error(f"ForecastingAgent runway failed: {e}")
         avg = sum(m.get("total", 0) for m in monthly_expenses) / max(len(monthly_expenses), 1)
@@ -75,11 +115,9 @@ class ForecastingAgent:
                 timer.tokens_used = result.total_tokens
                 timer.prompt_tokens = result.prompt_tokens
                 timer.completion_tokens = result.completion_tokens
-                m = re.search(r'\{.*\}', result.content, re.DOTALL)
-                if m:
-                    data = json.loads(m.group())
-                    timer.output_summary = f"Budget forecast: ${data.get('total_projected_3m', 0):,.0f}"
-                    return data
+                m = _extract_json(result.content)
+                timer.output_summary = f"Budget forecast: ${m.get('total_projected_3m', 0):,.0f}"
+                return m
             except Exception as e:
                 logger.error(f"ForecastingAgent budget failed: {e}")
         return {"monthly_forecasts": [], "total_projected_3m": 0, "growth_categories": [], "budget_alerts": [], "recommendations": []}

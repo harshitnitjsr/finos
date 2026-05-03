@@ -8,7 +8,7 @@ import hashlib
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.gzip import GZipMiddleware
+
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from loguru import logger
@@ -124,7 +124,8 @@ app = FastAPI(
 )
 
 # Middleware — order matters: outermost runs first on request, last on response
-app.add_middleware(GZipMiddleware, minimum_size=1000)
+# Note: GZipMiddleware is intentionally omitted as it buffers small chunks
+# and completely breaks Server-Sent Events (SSE) streaming.
 app.add_middleware(
     CORSMiddleware,
     # Only accept requests from the Next.js frontend origin
@@ -149,6 +150,12 @@ app.include_router(api_router, prefix="/api/v1")
 async def health_check():
     redis_ok = await cache.ping()
     qdrant_ok = await vector_store.ping()
+    qdrant_stats = {}
+    if qdrant_ok:
+        try:
+            qdrant_stats = await vector_store.get_collection_stats()
+        except Exception:
+            qdrant_stats = {}
     return {
         "status": "healthy",
         "service": "AFOS API",
@@ -158,6 +165,7 @@ async def health_check():
             "redis": "connected" if redis_ok else "unavailable",
             "qdrant": "connected" if qdrant_ok else "unavailable",
         },
+        "qdrant_collections": qdrant_stats,
     }
 
 

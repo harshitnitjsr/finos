@@ -20,7 +20,9 @@ from loguru import logger
 
 from app.core.database import get_db
 from app.core.memory import memory_service
+from app.core.redis_client import cache
 from app.api.deps import get_org_id
+from fastapi import HTTPException
 
 router = APIRouter()
 
@@ -65,7 +67,18 @@ async def chat_stream(
       data: {"type":"done",      "session_id":"...", "total_tokens":0, ...}
       data: {"type":"error",     "message":"..."}
     """
+    # ── Rate limit: 30 chat requests per minute per org ───────────────────
+    allowed, remaining = await cache.rate_limit(f"chat:{org_id}", limit=30, window_seconds=60)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded: 30 chat requests per minute.",
+            headers={"Retry-After": "60"},
+        )
     from app.langgraph.streaming import stream_agent_response
+
+    # ── Track daily message count per org (Redis counter) ─────────────────
+    await cache.increment_counter("chat_messages", org_id)
 
     memory_context, lc_history = await memory_service.get_context(
         session_id=request.session_id,
@@ -345,4 +358,29 @@ async def get_tool_logs(
             }
             for l in logs
         ],
+    }
+
+
+# ── Reasoning context polling ─────────────────────────────────────────────────
+
+@router.get("/run/{run_id}/context")
+async def get_run_context(run_id: str):
+    """
+    Poll live reasoning context for a running agent turn.
+
+    Returns real-time state stored in Redis:
+      - status: 'running' | 'calling_tool' | 'done'
+      - current_tool: which tool the agent is currently invoking
+      - current_turn: agentic loop iteration (0-indexed, max 6)
+      - tool_calls: all tool calls so far in this turn
+      - agent_name: which agent was routed to
+
+    Returns {"state": null} when:
+      - The run has completed (context was cleared)
+      - run_id doesn't exist
+    """
+    context = await cache.get_reasoning_context(run_id)
+    return {
+        "run_id": run_id,
+        "state": context,
     }

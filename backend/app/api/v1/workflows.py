@@ -68,13 +68,57 @@ async def retry_workflow(workflow_id: str, db: AsyncSession = Depends(get_db)):
     if wf.status not in ("failed", "pending"):
         raise HTTPException(status_code=400, detail="Only failed or pending workflows can be retried")
 
-    wf.status = "running"
-    wf.retry_count = (wf.retry_count or 0) + 1
-    wf.error = None
-    wf.started_at = datetime.utcnow()
-    await db.commit()
-    await cache.invalidate_pattern("workflows")
-    return _wf_to_dict(wf)
+    # ── Redis: acquire distributed retry lock (prevent double-retry) ──────────
+    locked = await cache.acquire_retry_lock(workflow_id)
+    if not locked:
+        raise HTTPException(status_code=409, detail="Retry already in progress for this workflow")
+
+    try:
+        # ── Redis: check retry limit ──────────────────────────────────────────
+        can_retry, retry_count = await cache.increment_retry_count(workflow_id, max_retries=5)
+        if not can_retry:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Workflow has exceeded max retries ({retry_count - 1}/5). Manual intervention required."
+            )
+
+        # ── SQL: update workflow record ───────────────────────────────────────
+        wf.status = "running"
+        wf.retry_count = (wf.retry_count or 0) + 1
+        wf.error = None
+        wf.started_at = datetime.utcnow()
+        await db.commit()
+
+        # ── Redis: broadcast real-time workflow state ─────────────────────────
+        await cache.set_workflow_state(workflow_id, {
+            "workflow_id": workflow_id,
+            "status": "running",
+            "current_step": 0,
+            "current_step_name": "Starting retry...",
+            "retry_count": retry_count,
+            "started_at": datetime.utcnow().isoformat(),
+        })
+
+        await cache.invalidate_pattern("workflows")
+        return _wf_to_dict(wf)
+
+    finally:
+        # Always release lock so next retry can proceed
+        await cache.release_retry_lock(workflow_id)
+
+
+@router.get("/{workflow_id}/state")
+async def get_workflow_realtime_state(workflow_id: str):
+    """
+    Real-time workflow execution state from Redis.
+    Returns None if workflow is not currently active.
+    Faster than hitting the DB — used for live polling.
+    """
+    state = await cache.get_workflow_state(workflow_id)
+    if not state:
+        return {"workflow_id": workflow_id, "state": None, "message": "No active state (workflow may be completed or not started)"}
+    return {"workflow_id": workflow_id, "state": state}
+
 
 
 def _wf_to_dict(wf: Workflow) -> dict:

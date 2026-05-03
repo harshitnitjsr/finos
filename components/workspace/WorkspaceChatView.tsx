@@ -4,6 +4,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Activity, Sparkles } from "lucide-react";
 import WorkspaceMessageBubble from "./MessageBubble";
 import WorkspaceInput from "./WorkspaceInput";
+import AgentThinkingOverlay from "./AgentThinkingOverlay";
+import { useAgentThinking } from "./hooks/useAgentThinking";
 import type { WorkspaceMessage, WorkspaceChat } from "./hooks/useWorkspace";
 
 const AGENT_COLORS: Record<string, string> = {
@@ -160,6 +162,13 @@ interface WorkspaceChatViewProps {
   messages: WorkspaceMessage[];
   isLoadingMessages: boolean;
   isSending: boolean;
+  activeRunId?: string | null;
+  /** Zero-latency tool calls from SSE events */
+  activeLiveTools?: { tool: string; args: Record<string, unknown>; turn: number }[];
+  /** Agent name from SSE agent event */
+  activeAgentName?: string | null;
+  /** Intent from SSE agent event */
+  activeIntent?: string | null;
   onSend: (text: string) => void;
   onStop?: () => void;
 }
@@ -169,12 +178,19 @@ export default function WorkspaceChatView({
   messages,
   isLoadingMessages,
   isSending,
+  activeRunId = null,
+  activeLiveTools = [],
+  activeAgentName = null,
+  activeIntent = null,
   onSend,
   onStop,
 }: WorkspaceChatViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
+
+  // Poll Redis for current_tool marker (enriches live SSE data)
+  const thinkingContext = useAgentThinking(activeRunId, isSending);
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -248,6 +264,19 @@ export default function WorkspaceChatView({
                   onCopy={(text) => handleCopy(msg.id, text)}
                   onEdit={msg.role === "user" ? handleEdit : undefined}
                   onRegenerate={msg.role === "assistant" ? undefined : undefined}
+                  // Pass overlay only for the streaming assistant bubble
+                  thinkingOverlay={
+                    msg.isStreaming ? (
+                      <AgentThinkingOverlay
+                        context={thinkingContext}
+                        isStreaming={!!msg.isStreaming}
+                        hasContent={msg.content.length > 0}
+                        liveTools={activeLiveTools}
+                        liveAgentName={activeAgentName}
+                        liveIntent={activeIntent}
+                      />
+                    ) : null
+                  }
                 />
               ))}
             </AnimatePresence>
