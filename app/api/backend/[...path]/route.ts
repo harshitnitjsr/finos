@@ -5,6 +5,8 @@
  * - Injects X-Org-ID and X-User-ID headers so FastAPI can scope
  *   all queries to the correct organisation without hardcoding
  * - Strips cookies before forwarding (backend doesn't need them)
+ * - Passes SSE (text/event-stream) responses through without buffering
+ *   so streaming endpoints work correctly
  */
 import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
@@ -30,7 +32,7 @@ async function handler(
   // Build forwarded headers
   const headers = new Headers();
   headers.set("Content-Type", req.headers.get("Content-Type") ?? "application/json");
-  headers.set("Accept", "application/json");
+  headers.set("Accept", req.headers.get("Accept") ?? "application/json");
 
   // Org context — injected server-side from JWT, cannot be spoofed by clients
   if (session.user.orgId) {
@@ -57,13 +59,30 @@ async function handler(
     body: bodyBuffer,
   });
 
+  const contentType = backendRes.headers.get("Content-Type") ?? "application/json";
+
+  // ── SSE / streaming pass-through ──────────────────────────────────────────
+  // Do NOT buffer text/event-stream — pipe the body directly so tokens
+  // reach the browser as they are generated.
+  if (contentType.includes("text/event-stream")) {
+    return new NextResponse(backendRes.body, {
+      status: backendRes.status,
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+      },
+    });
+  }
+
+  // ── Standard JSON / binary responses ──────────────────────────────────────
   const resBody = await backendRes.arrayBuffer();
 
   return new NextResponse(resBody, {
     status: backendRes.status,
     headers: {
-      "Content-Type":
-        backendRes.headers.get("Content-Type") ?? "application/json",
+      "Content-Type": contentType,
     },
   });
 }

@@ -2,9 +2,9 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  MessageSquare, X, Send, Bot, User, Loader2, Trash2,
+  MessageSquare, X, Send, Bot, User, Trash2, Square,
   Zap, ChevronDown, ChevronRight, Activity, Wrench, CheckCircle2,
-  Clock, Terminal, Database
+  Clock, Database
 } from "lucide-react";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -27,6 +27,7 @@ interface Message {
   timestamp?: string;
   memory_used?: boolean;
   sources?: string[];
+  _streamingId?: string;  // internal: tracks the in-flight streaming bubble
 }
 
 const AGENT_COLORS: Record<string, string> = {
@@ -285,6 +286,7 @@ export default function ChatWidget() {
   const [unread, setUnread] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -297,45 +299,137 @@ export default function ChatWidget() {
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || loading) return;
 
-    const userMsg: Message = { role: "user", content: text.trim(), timestamp: new Date().toISOString() };
-    setMessages((p) => [...p, userMsg]);
+    const userMsg: Message = {
+      role: "user",
+      content: text.trim(),
+      timestamp: new Date().toISOString(),
+    };
+
+    // Optimistic assistant bubble (streaming)
+    const streamingId = `stream_${Date.now()}`;
+    const streamingMsg: Message = {
+      role: "assistant",
+      content: "",
+      timestamp: new Date().toISOString(),
+      _streamingId: streamingId,
+    };
+
+    setMessages((p) => [...p, userMsg, streamingMsg]);
     setInput("");
     setLoading(true);
+    abortRef.current = new AbortController();
 
     try {
-      const res = await fetch(`/api/backend/chat`, {
+      const res = await fetch(`/api/backend/chat/stream`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "text/event-stream",
+        },
         body: JSON.stringify({ message: text.trim(), session_id: sessionId }),
+        signal: abortRef.current.signal,
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
 
-      const asstMsg: Message = {
-        role: "assistant",
-        content: data.message,
-        agent: data.agent,
-        agent_id: data.agent_id,
-        intent: data.intent,
-        tool_calls: data.tool_calls || [],
-        total_tokens: data.total_tokens,
-        duration_ms: data.duration_ms,
-        timestamp: data.timestamp,
-        memory_used: data.memory_used ?? false,
-        sources: data.sources ?? [],
-      };
-      setMessages((p) => [...p, asstMsg]);
-      if (!open) setUnread((u) => u + 1);
-    } catch {
-      setMessages((p) => [...p, {
-        role: "assistant",
-        content: "⚠️ Unable to reach AFOS backend. Ensure the server is running on port 8000.",
-        timestamp: new Date().toISOString(),
-      }]);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const { parseSSEStream } = await import("@/lib/sse");
+
+      for await (const evt of parseSSEStream(res)) {
+        const type = evt.type as string;
+
+        if (type === "agent") {
+          setMessages((p) =>
+            p.map((m) =>
+              (m as Message & { _streamingId?: string })._streamingId === streamingId
+                ? {
+                    ...m,
+                    agent: evt.agent as string,
+                    agent_id: evt.agent_id as string,
+                    intent: evt.intent as string,
+                  }
+                : m
+            )
+          );
+        } else if (type === "tool_call") {
+          const tc = {
+            tool: evt.tool as string,
+            args: (evt.args as Record<string, unknown>) ?? {},
+            turn: (evt.turn as number) ?? 0,
+          };
+          setMessages((p) =>
+            p.map((m) => {
+              const sm = m as Message & { _streamingId?: string };
+              if (sm._streamingId !== streamingId) return m;
+              return { ...m, tool_calls: [...(m.tool_calls ?? []), tc] };
+            })
+          );
+        } else if (type === "token") {
+          const token = (evt.content as string) ?? "";
+          setMessages((p) =>
+            p.map((m) => {
+              const sm = m as Message & { _streamingId?: string };
+              if (sm._streamingId !== streamingId) return m;
+              return { ...m, content: m.content + token };
+            })
+          );
+          if (!open) setUnread((u) => u + 1);
+        } else if (type === "done") {
+          setMessages((p) =>
+            p.map((m) => {
+              const sm = m as Message & { _streamingId?: string };
+              if (sm._streamingId !== streamingId) return m;
+              const updated = { ...m, _streamingId: undefined };
+              if (evt.total_tokens) updated.total_tokens = evt.total_tokens as number;
+              if (evt.duration_ms) updated.duration_ms = evt.duration_ms as number;
+              if (evt.tool_calls) updated.tool_calls = evt.tool_calls as Message["tool_calls"];
+              return updated;
+            })
+          );
+        } else if (type === "error") {
+          setMessages((p) =>
+            p.map((m) => {
+              const sm = m as Message & { _streamingId?: string };
+              if (sm._streamingId !== streamingId) return m;
+              return {
+                ...m,
+                content: `⚠️ ${(evt.message as string) || "Agent error"}. Please try again.`,
+                _streamingId: undefined,
+              };
+            })
+          );
+        }
+      }
+    } catch (e: unknown) {
+      if ((e as { name?: string }).name !== "AbortError") {
+        setMessages((p) =>
+          p.map((m) => {
+            const sm = m as Message & { _streamingId?: string };
+            if (sm._streamingId !== streamingId) return m;
+            return {
+              ...m,
+              content: "⚠️ Unable to reach AFOS backend. Ensure the server is running on port 8000.",
+              _streamingId: undefined,
+            };
+          })
+        );
+      } else {
+        // Aborted — remove the empty streaming bubble
+        setMessages((p) =>
+          p.filter((m) => {
+            const sm = m as Message & { _streamingId?: string };
+            return sm._streamingId !== streamingId || m.content.length > 0;
+          })
+        );
+      }
     } finally {
       setLoading(false);
+      abortRef.current = null;
     }
   }, [loading, sessionId, open]);
+
+  const stopGeneration = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
 
   const clearChat = async () => {
     setMessages([]);
@@ -483,20 +577,6 @@ export default function ChatWidget() {
                 messages.map((msg, i) => <MessageBubble key={i} msg={msg} />)
               )}
 
-              {loading && (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-2.5">
-                  <div className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: "rgba(139,92,246,0.12)", border: "1px solid rgba(139,92,246,0.25)" }}>
-                    <Loader2 size={13} className="animate-spin text-violet-400" />
-                  </div>
-                  <div className="px-3.5 py-2.5 rounded-2xl rounded-tl-md space-y-1" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                    <TypingDots />
-                    <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
-                      Calling tools…
-                    </p>
-                  </div>
-                </motion.div>
-              )}
-
               <div ref={messagesEndRef} />
             </div>
 
@@ -518,15 +598,27 @@ export default function ChatWidget() {
                   className="flex-1 bg-transparent text-xs outline-none placeholder:opacity-35"
                   style={{ color: "var(--color-text-primary)" }}
                 />
-                <button
-                  id="afos-chat-send"
-                  onClick={() => sendMessage(input)}
-                  disabled={!input.trim() || loading}
-                  className="w-7 h-7 rounded-lg flex items-center justify-center transition-all disabled:opacity-25"
-                  style={{ background: input.trim() && !loading ? "linear-gradient(135deg, #3b82f6, #8b5cf6)" : "rgba(255,255,255,0.05)" }}
-                >
-                  <Send size={12} className="text-white" />
-                </button>
+                {loading ? (
+                  <button
+                    id="afos-chat-stop"
+                    onClick={stopGeneration}
+                    className="w-7 h-7 rounded-lg flex items-center justify-center transition-all"
+                    style={{ background: "rgba(244,63,94,0.15)", border: "1px solid rgba(244,63,94,0.25)" }}
+                    title="Stop generation"
+                  >
+                    <Square size={10} fill="#f43f5e" className="text-rose-400" />
+                  </button>
+                ) : (
+                  <button
+                    id="afos-chat-send"
+                    onClick={() => sendMessage(input)}
+                    disabled={!input.trim()}
+                    className="w-7 h-7 rounded-lg flex items-center justify-center transition-all disabled:opacity-25"
+                    style={{ background: input.trim() ? "linear-gradient(135deg, #3b82f6, #8b5cf6)" : "rgba(255,255,255,0.05)" }}
+                  >
+                    <Send size={12} className="text-white" />
+                  </button>
+                )}
               </div>
               <p className="text-xs mt-1.5 text-center" style={{ color: "var(--color-text-muted)" }}>
                 <Database size={9} className="inline mr-1" />

@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from langchain_core.messages import HumanMessage
@@ -46,6 +47,96 @@ class ChatResponse(BaseModel):
 
 
 # ── Chat endpoint ─────────────────────────────────────────────────────────────
+
+# ── Streaming endpoint ────────────────────────────────────────────────────────
+
+@router.post("/stream")
+async def chat_stream(
+    request: ChatRequest,
+    org_id: str = Depends(get_org_id),
+):
+    """
+    SSE streaming chat — same pipeline as POST /chat but streams tokens.
+
+    SSE event types:
+      data: {"type":"agent",     "agent":"...", "agent_id":"...", "intent":"..."}
+      data: {"type":"tool_call", "tool":"...",  "args":{},        "turn":0}
+      data: {"type":"token",     "content":"..."}
+      data: {"type":"done",      "session_id":"...", "total_tokens":0, ...}
+      data: {"type":"error",     "message":"..."}
+    """
+    from app.langgraph.streaming import stream_agent_response
+
+    memory_context, lc_history = await memory_service.get_context(
+        session_id=request.session_id,
+        user_query=request.message,
+        org_id=org_id,
+    )
+
+    # Capture metadata after streaming for memory persistence
+    # We wrap the generator to save_turn after the done event is emitted
+    accumulated: dict = {
+        "final_text": "",
+        "tool_calls": [],
+        "total_tokens": 0,
+        "duration_ms": 0,
+        "agent_name": "AI Agent",
+        "agent_id": "",
+        "intent": "",
+    }
+
+    import json as _json
+
+    async def event_stream():
+        async for chunk in stream_agent_response(
+            message=request.message,
+            session_id=request.session_id,
+            org_id=org_id,
+            memory_context=memory_context,
+            lc_history=lc_history,
+        ):
+            yield chunk
+            # Parse emitted events to build accumulated metadata
+            if chunk.startswith("data: "):
+                try:
+                    evt = _json.loads(chunk[6:])
+                    t = evt.get("type")
+                    if t == "token":
+                        accumulated["final_text"] += evt.get("content", "")
+                    elif t == "agent":
+                        accumulated["agent_name"] = evt.get("agent", "AI Agent")
+                        accumulated["agent_id"]   = evt.get("agent_id", "")
+                        accumulated["intent"]     = evt.get("intent", "")
+                    elif t == "done":
+                        accumulated["tool_calls"]   = evt.get("tool_calls", [])
+                        accumulated["total_tokens"] = evt.get("total_tokens", 0)
+                        accumulated["duration_ms"]  = evt.get("duration_ms", 0)
+                        # Persist to 3-tier memory after stream ends
+                        await memory_service.save_turn(
+                            session_id=request.session_id,
+                            org_id=org_id,
+                            user_message=request.message,
+                            ai_message=accumulated["final_text"],
+                            agent_name=accumulated["agent_name"],
+                            intent=accumulated["intent"],
+                            run_id=evt.get("run_id", ""),
+                            tool_calls=accumulated["tool_calls"],
+                            tokens_used=accumulated["total_tokens"],
+                            duration_ms=accumulated["duration_ms"],
+                        )
+                except Exception:
+                    pass
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
 
 @router.post("", response_model=ChatResponse)
 async def chat(

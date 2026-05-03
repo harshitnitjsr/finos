@@ -395,3 +395,92 @@ class ConversationMessage(Base):
         Index("ix_conv_msg_org_session", "org_id", "session_id"),
         Index("ix_conv_msg_created_at", "created_at"),
     )
+
+
+class WorkspaceChat(Base):
+    """
+    A named conversation session in the AI Chatbot Workspace.
+    Completely isolated from the floating widget's ConversationMessage table.
+    One WorkspaceChat maps to one LangGraph session (session_id = 'ws_<uuid>').
+    """
+    __tablename__ = "workspace_chats"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_uuid)
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    user_id: Mapped[str] = mapped_column(String(36), nullable=True)   # auth user
+    user_email: Mapped[str] = mapped_column(String(255), nullable=True)
+
+    # Human-readable title (auto-generated from first message, then user-editable)
+    title: Mapped[str] = mapped_column(String(255), default="New Chat")
+
+    # Links to the LangGraph / memory session — prefix ws_ prevents
+    # widget session IDs from leaking into workspace history
+    session_id: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+
+    # Model metadata (future multi-model support)
+    model: Mapped[str] = mapped_column(String(100), default="gpt-4o")
+
+    # Stats (denormalised for sidebar display performance)
+    message_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_message_preview: Mapped[str] = mapped_column(String(300), nullable=True)
+
+    # Soft delete / archive
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    messages = relationship("WorkspaceChatMessage", back_populates="chat", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("ix_workspace_chats_org_id", "org_id"),
+        Index("ix_workspace_chats_user_id", "user_id"),
+        Index("ix_workspace_chats_updated_at", "updated_at"),
+    )
+
+
+class WorkspaceChatMessage(Base):
+    """
+    Per-turn message log for workspace conversations.
+    Mirrors ConversationMessage but scoped to a WorkspaceChat.
+    """
+    __tablename__ = "workspace_messages"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_uuid)
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    chat_id: Mapped[str] = mapped_column(ForeignKey("workspace_chats.id"), nullable=False)
+    session_id: Mapped[str] = mapped_column(String(100), nullable=False)
+
+    # Message content
+    role: Mapped[str] = mapped_column(String(20), nullable=False)   # user | assistant
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # Agent metadata (assistant messages only)
+    agent_name: Mapped[str] = mapped_column(String(100), nullable=True)
+    agent_id: Mapped[str] = mapped_column(String(100), nullable=True)
+    intent: Mapped[str] = mapped_column(String(50), nullable=True)
+    run_id: Mapped[str] = mapped_column(String(36), nullable=True)
+
+    # Tool usage snapshot
+    tool_calls: Mapped[list] = mapped_column(JSON, default=list)
+
+    # Memory sources used
+    memory_used: Mapped[bool] = mapped_column(Boolean, default=False)
+    memory_sources: Mapped[list] = mapped_column(JSON, default=list)
+
+    # Performance
+    tokens_used: Mapped[int] = mapped_column(Integer, default=0)
+    duration_ms: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Whether embedded into Qdrant
+    qdrant_indexed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    chat = relationship("WorkspaceChat", back_populates="messages")
+
+    __table_args__ = (
+        Index("ix_workspace_messages_chat_id", "chat_id"),
+        Index("ix_workspace_messages_org_id", "org_id"),
+        Index("ix_workspace_messages_created_at", "created_at"),
+    )

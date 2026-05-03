@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard, FileText, CreditCard, CheckSquare, Workflow,
   Bot, Landmark, BarChart3, Settings, ChevronLeft, ChevronRight,
-  Zap, Shield
+  Zap, Shield, MessageSquare
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -15,6 +15,7 @@ const NAV_ITEMS = [
   { href: "/approvals", icon: CheckSquare, label: "Approvals", group: "main", badge: "3" },
   { href: "/workflows", icon: Workflow, label: "Workflows", group: "ops" },
   { href: "/agents", icon: Bot, label: "AI Agents", group: "ops" },
+  { href: "/workspace", icon: MessageSquare, label: "AI Workspace", group: "ops", aiLabel: true },
   { href: "/treasury", icon: Landmark, label: "Treasury", group: "ops" },
   { href: "/analytics", icon: BarChart3, label: "Analytics", group: "ops" },
   { href: "/settings", icon: Settings, label: "Settings", group: "config" },
@@ -127,7 +128,21 @@ function NavItem({ item, collapsed, active }: { item: typeof NAV_ITEMS[0]; colla
       className={`sidebar-nav-item ${active ? "active" : ""}`}
       title={collapsed ? item.label : undefined}
     >
-      <item.icon size={18} className="flex-shrink-0" />
+      {/* AI Workspace gets a gradient icon */}
+      {(item as {aiLabel?: boolean}).aiLabel ? (
+        <span
+          className="flex-shrink-0 w-[18px] h-[18px] flex items-center justify-center"
+          style={{
+            background: "linear-gradient(135deg, #3b82f6, #8b5cf6)",
+            borderRadius: 5,
+            padding: 2,
+          }}
+        >
+          <item.icon size={12} className="text-white" />
+        </span>
+      ) : (
+        <item.icon size={18} className="flex-shrink-0" />
+      )}
       <AnimatePresence>
         {!collapsed && (
           <motion.span
