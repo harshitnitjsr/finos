@@ -20,7 +20,7 @@ const CS: Record<string, string> = { USD: "$", INR: "₹", EUR: "€", GBP: "£"
 const cv = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.06 } } };
 const iv = { hidden: { opacity: 0, y: 18 }, show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: "easeOut" as const } } };
 
-interface DashboardResp { kpis: Record<string, unknown>; charts: Record<string, unknown>; recent_invoices?: unknown[]; }
+interface DashboardResp { kpis: Record<string, unknown>; charts: Record<string, unknown>; recent_invoices?: unknown[]; base_currency?: string; }
 interface InsightsResp { status?: string; headline?: string; bullets?: string[]; summary?: string; key_metrics?: unknown[]; recommendations?: unknown[]; }
 interface ApprovalsResp { approvals: Record<string, unknown>[]; total: number; counts: Record<string, number>; }
 interface WorkflowsResp { workflows: Record<string, unknown>[]; counts: Record<string, number>; }
@@ -60,22 +60,27 @@ export default function DashboardPage() {
   const { data: approvalsData } = useApprovals();
   const { data: workflowsData } = useWorkflows();
 
-  type SpendItem = { currency: string; total: number; change_pct?: number };
-  type TrendPoint = { date: string; amount: number };
+  type SpendItem = { currency: string; total: number; change_pct?: number; is_consolidated?: boolean };
+  type TrendPoint = { date: string; amount: number; currency: string };
   type CategoryItem = { category: string; amount: number; currency: string };
+
+  const baseCurrency = analytics?.base_currency || "USD";
+  const currencySymbol = CS[baseCurrency] || "$";
 
   const kpis = analytics?.kpis as Record<string, unknown> || {};
   const charts = analytics?.charts as Record<string, unknown> || {};
 
-  const usdSpend = (kpis.monthly_spend as SpendItem[] | undefined)?.find(s => s.currency === "USD");
-  const currUsdSpend = usdSpend?.total || 0;
-  const spendChangePct = usdSpend?.change_pct;
+  const baseSpend = (kpis.monthly_spend as SpendItem[] | undefined)?.find(s => s.is_consolidated) || 
+                    (kpis.monthly_spend as SpendItem[] | undefined)?.find(s => s.currency === baseCurrency);
+  const currBaseSpend = baseSpend?.total || 0;
+  const spendChangePct = baseSpend?.change_pct;
 
-  const trendData = ((charts.expense_trend as TrendPoint[] | undefined) || []).map(d => ({
-    date: d.date ? new Date(d.date).toLocaleDateString("en", { month: "short", day: "numeric" }) : "",
-    v: d.amount,
-  }));
-  const categoryData = (charts.category_breakdown as CategoryItem[] | undefined) || [];
+  const trendData = ((charts.expense_trend as TrendPoint[] | undefined) || [])
+    .map(d => ({
+      date: d.date ? new Date(d.date).toLocaleDateString("en", { month: "short", day: "numeric" }) : "",
+      v: d.amount,
+    }));
+  const categoryData = ((charts.category_breakdown as CategoryItem[] | undefined) || []);
   const approvals = approvalsData?.approvals || [];
   const workflows = workflowsData?.workflows || [];
 
@@ -150,8 +155,8 @@ export default function DashboardPage() {
       <motion.div variants={iv} className="grid grid-cols-2 xl:grid-cols-4 gap-3">
         {[
           {
-            label: "Monthly Spend", sub: "USD",
-            value: isLoading ? null : currUsdSpend ? `$${(currUsdSpend / 1000).toFixed(1)}K` : "—",
+            label: "Monthly Spend", sub: baseCurrency,
+            value: isLoading ? null : currBaseSpend ? `${currencySymbol}${(currBaseSpend / 1000).toFixed(1)}K` : "—",
             detail: spendChangePct != null ? `${spendChangePct >= 0 ? "+" : ""}${spendChangePct}% vs last month` : "No prior data",
             trend: spendChangePct != null ? (spendChangePct > 0 ? "up" : spendChangePct < 0 ? "down" : null) : null,
             trendVal: spendChangePct != null ? `${spendChangePct >= 0 ? "+" : ""}${spendChangePct}%` : undefined,
@@ -235,8 +240,8 @@ export default function DashboardPage() {
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
                 <XAxis dataKey="date" tick={{ fill: "#475569", fontSize: 10 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: "#475569", fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `$${(v / 1000).toFixed(0)}K`} width={44} />
-                <Tooltip contentStyle={{ background: "#111827", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "#f8fafc", fontSize: 12 }} formatter={(v: unknown) => [`$${(v as number).toLocaleString()}`, "Spend"]} />
+                <YAxis tick={{ fill: "#475569", fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `${currencySymbol}${(v / 1000).toFixed(0)}K`} width={44} />
+                <Tooltip contentStyle={{ background: "#111827", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "#f8fafc", fontSize: 12 }} formatter={(v: unknown) => [`${currencySymbol}${(v as number).toLocaleString()}`, "Spend"]} />
                 <Area type="monotone" dataKey="v" name="Spend" stroke="#3b82f6" strokeWidth={2} fill="url(#aGrad)" />
               </AreaChart>
             </ResponsiveContainer>
@@ -258,7 +263,7 @@ export default function DashboardPage() {
                   <Pie data={categoryData} cx="50%" cy="50%" innerRadius={38} outerRadius={62} dataKey="amount" paddingAngle={2}>
                     {categoryData.map((_: unknown, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                   </Pie>
-                  <Tooltip contentStyle={{ background: "#111827", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "#f8fafc", fontSize: 12 }} formatter={(v: unknown) => [`$${(v as number).toLocaleString()}`, ""]} />
+                  <Tooltip contentStyle={{ background: "#111827", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, color: "#f8fafc", fontSize: 12 }} formatter={(v: unknown) => [`${currencySymbol}${(v as number).toLocaleString()}`, ""]} />
                 </PieChart>
               </ResponsiveContainer>
               <div className="space-y-2 mt-1">
@@ -268,7 +273,7 @@ export default function DashboardPage() {
                       <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: COLORS[i % COLORS.length] }} />
                       <span className="text-xs truncate" style={{ color: "var(--color-text-secondary)" }}>{d.category}</span>
                     </div>
-                    <span className="text-xs font-bold text-white ml-2 flex-shrink-0">${(d.amount / 1000).toFixed(0)}K</span>
+                    <span className="text-xs font-bold text-white ml-2 flex-shrink-0">{currencySymbol}{(d.amount / 1000).toFixed(0)}K</span>
                   </div>
                 ))}
               </div>

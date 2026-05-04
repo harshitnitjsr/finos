@@ -8,10 +8,11 @@ from pydantic import BaseModel
 from loguru import logger
 
 from app.core.database import get_db
+from app.core.fx import fx_service
 from app.core.redis_client import cache, TTL_ANALYTICS
 from app.core.vector_store import vector_store
 from app.core.model_router import model_router
-from app.models.models import Expense
+from app.models.models import Expense, Organization
 from app.agents.expense_agent import expense_agent
 from app.agents.insight_agent import insight_agent
 from app.agents.vendor_agent import vendor_agent
@@ -74,7 +75,7 @@ async def categorize_expense_background(expense_id: str, org_id: str):
 
         await db.commit()
 
-        # Step 2.5: Auto-create Vendor if it doesn't exist
+        # Step 2.5: Auto-create Vendor if it doesn't exist and link to expense
         if expense.vendor_name:
             from app.models.models import Vendor
             v_res = await db.execute(select(Vendor).where(Vendor.name == expense.vendor_name, Vendor.org_id == org_id).limit(1))
@@ -91,9 +92,12 @@ async def categorize_expense_background(expense_id: str, org_id: str):
                     embedding=v_embed,
                     payload={"org_id": org_id, "name": vendor.name, "category": expense.category or "", "risk_level": "low"}
                 )
-                await db.commit()
-                # Invalidate vendors cache
-                await cache.invalidate_pattern("vendors")
+            
+            # Link vendor to expense
+            expense.vendor_id = vendor.id
+            await db.commit()
+            # Invalidate vendors cache
+            await cache.invalidate_pattern("vendors")
 
         # Step 3: Embed and upsert into Qdrant for future anomaly clustering
         embed_text = (
@@ -217,7 +221,27 @@ async def expenses_by_category(
         ).where(Expense.org_id == org_id).group_by(Expense.category, Expense.currency)
     )
     rows = result.all()
-    return {"data": [{"category": r.category or "Uncategorized", "currency": r.currency, "total": float(r.total or 0), "count": r.count} for r in rows]}
+    # Get organization default currency and FX rates
+    org_res = await db.execute(select(Organization.default_currency).where(Organization.id == org_id))
+    base_currency = org_res.scalar_one_or_none() or "USD"
+    rates = await fx_service.get_rates(base_currency)
+
+    # Consolidate by category
+    consolidated = {}
+    for r in rows:
+        cat = r.category or "Uncategorized"
+        amt_base = fx_service.convert(float(r.total or 0), r.currency, base_currency, rates)
+        if cat not in consolidated:
+            consolidated[cat] = {"category": cat, "total": 0, "count": 0, "currency": base_currency}
+        consolidated[cat]["total"] += amt_base
+        consolidated[cat]["count"] += r.count
+    
+    formatted = sorted(consolidated.values(), key=lambda x: x["total"], reverse=True)
+
+    return {
+        "data": formatted,
+        "base_currency": base_currency
+    }
 
 
 @router.get("/analytics/anomalies")

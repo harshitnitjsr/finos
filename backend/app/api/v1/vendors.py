@@ -11,8 +11,8 @@ from typing import Optional
 from app.core.database import get_db
 from app.core.redis_client import cache, TTL_VENDOR_LIST
 from app.core.vector_store import vector_store
-from app.core.model_router import model_router
-from app.models.models import Vendor, Invoice, Expense
+from app.core.fx import fx_service
+from app.models.models import Vendor, Invoice, Expense, Organization
 from app.api.deps import get_org_id
 from app.agents.vendor_agent import vendor_agent
 from app.agents.insight_agent import insight_agent
@@ -50,35 +50,71 @@ async def list_vendors(
     if cached:
         return cached
 
-    q = (
-        select(
-            Vendor,
-            func.coalesce(func.sum(Invoice.total_amount), Vendor.total_paid, 0).label("computed_total")
-        )
-        .outerjoin(Invoice, Invoice.vendor_id == Vendor.id)
-        .where(Vendor.org_id == org_id)
-        .group_by(Vendor.id)
-        .order_by(desc("computed_total"))
-        .limit(limit)
-    )
+    # Get organization default currency and FX rates
+    org_res = await db.execute(select(Organization.default_currency).where(Organization.id == org_id))
+    base_currency = org_res.scalar_one_or_none() or "USD"
+    rates = await fx_service.get_rates(base_currency)
+
+    # Get base vendor list
+    q = select(Vendor).where(Vendor.org_id == org_id).limit(limit)
     if category:
         q = q.where(Vendor.category == category)
     if risk_level:
         q = q.where(Vendor.risk_level == risk_level)
-
+    
     result = await db.execute(q)
-    rows = result.all()
+    rows = result.scalars().all()
+
+    # 1. Invoices
+    q_inv = (
+        select(Vendor.id, Invoice.currency, func.sum(Invoice.total_amount).label("curr_total"))
+        .join(Invoice, Invoice.vendor_id == Vendor.id)
+        .where(Vendor.org_id == org_id, Invoice.status == "paid")
+        .group_by(Vendor.id, Invoice.currency)
+    )
+    res_inv = await db.execute(q_inv)
+    
+    # 2. Expenses
+    q_exp = (
+        select(Vendor.id, Expense.currency, func.sum(Expense.amount).label("curr_total"))
+        .join(Expense, Expense.vendor_id == Vendor.id)
+        .where(Expense.org_id == org_id)
+        .group_by(Vendor.id, Expense.currency)
+    )
+    res_exp = await db.execute(q_exp)
+    
+    vendor_currency_map = {} # vendor_id -> consolidated_total_base
+    
+    for v_id, curr, total in res_inv.all():
+        amt_base = fx_service.convert(float(total or 0), curr, base_currency, rates)
+        vendor_currency_map[v_id] = vendor_currency_map.get(v_id, 0) + amt_base
+
+    for v_id, curr, total in res_exp.all():
+        amt_base = fx_service.convert(float(total or 0), curr, base_currency, rates)
+        vendor_currency_map[v_id] = vendor_currency_map.get(v_id, 0) + amt_base
 
     vendors = []
-    for vendor, computed_total in rows:
+    for vendor in rows:
         v_dict = _vendor_to_dict(vendor)
-        # Dynamic calculation overrides the static column if invoices exist
-        v_dict["total_paid"] = float(computed_total)
+        # Use consolidated total if available, else fallback to vendor's static column (converted)
+        if vendor.id in vendor_currency_map:
+            v_dict["total_paid"] = vendor_currency_map[vendor.id]
+        else:
+            # Fallback to static column but convert it (assuming it was in vendor's payment_currency)
+            v_dict["total_paid"] = fx_service.convert(float(vendor.total_paid or 0), vendor.payment_currency, base_currency, rates)
         vendors.append(v_dict)
+    
+    # Sort by total_paid desc
+    vendors.sort(key=lambda x: x["total_paid"], reverse=True)
+
+    # Get organization default currency
+    org_res = await db.execute(select(Organization.default_currency).where(Organization.id == org_id))
+    base_currency = org_res.scalar_one_or_none() or "USD"
 
     response = {
         "vendors": vendors,
         "total": len(vendors),
+        "base_currency": base_currency,
     }
     await cache.set("vendors", response, TTL_VENDOR_LIST, cache_key)
     return response

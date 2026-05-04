@@ -23,9 +23,9 @@ interface RunwayAnalysis {
   reduction_opportunities?: { category: string; potential_reduction: number; action: string }[];
   [key: string]: unknown;
 }
-interface TreasuryResp { upcoming_payments: Record<string, unknown>[]; monthly_burn: BurnItem[]; runway_days?: number; monthly_history_usd: { month: string; spend: number }[]; }
+interface TreasuryResp { upcoming_payments: Record<string, unknown>[]; monthly_burn: BurnItem[]; runway_days?: number; monthly_history: { month: string; spend: number }[]; base_currency: string; }
 interface PositionResp { positions: CashPosition[]; }
-interface ForecastResp { cash_flow_forecast: { month: string; inflow: number; outflow: number; net: number }[]; confidence?: number; runway_analysis?: RunwayAnalysis; }
+interface ForecastResp { cash_flow_forecast: { month: string; inflow: number; outflow: number; net: number }[]; confidence?: number; runway_analysis?: RunwayAnalysis; currency: string; }
 interface BudgetCategory { category: string; monthly_projections: { month: string; projected: number }[]; }
 interface BudgetResp { budget_by_category?: BudgetCategory[]; categories?: Record<string, unknown>[]; summary?: string; monthly_forecasts?: any[]; }
 
@@ -73,8 +73,10 @@ export default function TreasuryPage() {
   const monthlyBurn: BurnItem[] = summary?.monthly_burn || [];
   const positions: CashPosition[] = position?.positions || [];
   const forecastData = forecast?.cash_flow_forecast || [];
-  const historyData = summary?.monthly_history_usd || [];
+  const historyData = summary?.monthly_history || [];
   const runway = forecast?.runway_analysis;
+  const baseCurrency = summary?.base_currency || "USD";
+  const currencySymbol = CURRENCY_SYMBOLS[baseCurrency] || "$";
 
   return (
     <motion.div variants={cv} initial="hidden" animate="show" className="space-y-6">
@@ -164,7 +166,7 @@ export default function TreasuryPage() {
                   ))}
                   {summary?.runway_days != null && (
                     <div className="p-3 rounded-xl" style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)" }}>
-                      <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>Estimated USD Runway</p>
+                      <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>Estimated {baseCurrency} Runway</p>
                       <p className="text-xl font-bold text-emerald-400">{summary.runway_days} days</p>
                     </div>
                   )}
@@ -173,7 +175,7 @@ export default function TreasuryPage() {
             </motion.div>
 
             <motion.div variants={iv} className="card p-5 lg:col-span-2">
-              <h2 className="text-sm font-semibold text-white mb-3">Historical Monthly Spend (USD)</h2>
+              <h2 className="text-sm font-semibold text-white mb-3">Historical Monthly Spend ({baseCurrency})</h2>
               {summaryLoading ? (
                 <div className="shimmer rounded-xl" style={{ height: 160 }} />
               ) : historyData.length === 0 ? (
@@ -186,8 +188,8 @@ export default function TreasuryPage() {
                   <BarChart data={historyData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                     <XAxis dataKey="month" tick={{ fill: "#475569", fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fill: "#475569", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `$${(v / 1000).toFixed(0)}K`} />
-                    <Tooltip contentStyle={{ background: "#111827", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#f8fafc" }} formatter={(v: unknown) => [`$${(v as number).toLocaleString()}`, ""]} />
+                    <YAxis tick={{ fill: "#475569", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `${currencySymbol}${(v / 1000).toFixed(0)}K`} />
+                    <Tooltip contentStyle={{ background: "#111827", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#f8fafc" }} formatter={(v: unknown) => [`${currencySymbol}${(v as number).toLocaleString()}`, ""]} />
                     <Bar dataKey="spend" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -330,7 +332,7 @@ export default function TreasuryPage() {
                         <p className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>Projected for next {budgetMonths} month(s)</p>
                       </div>
                       <p className="text-sm font-bold text-violet-400">
-                        ${(total / 1000).toFixed(1)}K
+                        {currencySymbol}{(total / 1000).toFixed(1)}K
                       </p>
                     </div>
                   ));
@@ -375,7 +377,7 @@ export default function TreasuryPage() {
                 {runway.current_burn_rate != null && (
                   <div className="card p-5 text-center">
                     <p className="text-xs mb-1" style={{ color: "var(--color-text-muted)" }}>Monthly Burn</p>
-                    <p className="text-2xl font-bold text-rose-400">${Number(runway.current_burn_rate).toLocaleString()}</p>
+                    <p className="text-2xl font-bold text-rose-400">{currencySymbol}{Number(runway.current_burn_rate).toLocaleString()}</p>
                   </div>
                 )}
                 {runway.confidence != null && (
@@ -403,7 +405,7 @@ export default function TreasuryPage() {
                           <div key={k} className="flex justify-between text-xs">
                             <span style={{ color: "var(--color-text-muted)" }}>{k.replace(/_/g, " ")}</span>
                             <span className="text-white font-semibold">
-                              {k.includes("burn") ? `$${Number(v).toLocaleString()}` : `${Number(v).toFixed(1)} mo`}
+                              {k.includes("burn") ? `${currencySymbol}${Number(v).toLocaleString()}` : `${Number(v).toFixed(1)} mo`}
                             </span>
                           </div>
                         ))}
@@ -421,7 +423,7 @@ export default function TreasuryPage() {
                     {(runway.top_burn_categories as { category: string; monthly_avg: number }[]).map((cat, i) => (
                       <div key={i} className="flex items-center justify-between p-2 rounded-lg" style={{ background: "var(--color-bg-elevated)" }}>
                         <span className="text-sm text-white">{cat.category}</span>
-                        <span className="text-sm font-bold text-rose-400">${Number(cat.monthly_avg).toLocaleString()}/mo</span>
+                        <span className="text-sm font-bold text-rose-400">{currencySymbol}{Number(cat.monthly_avg).toLocaleString()}/mo</span>
                       </div>
                     ))}
                   </div>
@@ -437,7 +439,7 @@ export default function TreasuryPage() {
                       <div key={i} className="p-3 rounded-xl" style={{ background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.15)" }}>
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-sm font-semibold text-white">{opp.category}</span>
-                          <span className="text-sm font-bold text-emerald-400">-${Number(opp.potential_reduction).toLocaleString()}</span>
+                          <span className="text-sm font-bold text-emerald-400">-{currencySymbol}{Number(opp.potential_reduction).toLocaleString()}</span>
                         </div>
                         <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>→ {opp.action}</p>
                       </div>

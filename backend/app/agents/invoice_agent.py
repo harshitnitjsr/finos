@@ -17,8 +17,8 @@ from app.core.model_router import model_router, ModelTask
 EXTRACTION_SYSTEM_PROMPT = """You are an expert invoice extraction AI. Your job is to extract structured data from invoice text with extreme precision.
 
 Extract ALL of the following fields:
-- invoice_number: Invoice/bill number
-- vendor_name: Supplier/vendor name
+- invoice_number: Invoice/bill number. For travel invoices, use the Booking Reference, PNR, or Ticket Number if a formal 'Invoice Number' is missing.
+- vendor_name: Supplier/vendor name (e.g., "Air India Express", "Amazon", "Stripe")
 - vendor_email: Vendor email if present
 - invoice_date: Date of invoice (ISO format YYYY-MM-DD)
 - due_date: Payment due date (ISO format YYYY-MM-DD)
@@ -26,7 +26,7 @@ Extract ALL of the following fields:
 - tax_amount: Tax/GST/VAT amount (number only)
 - total_amount: Total payable amount (number only)
 - currency: Currency code (USD, INR, EUR, GBP, etc.)
-- description: Brief description of goods/services
+- description: Brief description of goods/services. If travel, include flight/route details.
 - line_items: Array of {description, quantity, unit_price, total}
 - payment_terms: Payment terms if specified
 - po_number: Purchase order number if present

@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 from sqlalchemy import (
     String, Numeric, DateTime, Boolean, Text, Integer,
-    ForeignKey, JSON, Enum as SAEnum, Index
+    ForeignKey, JSON, Enum as SAEnum, Index, text
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
@@ -78,7 +78,8 @@ class Organization(Base):
     slug: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     default_currency: Mapped[str] = mapped_column(String(10), default="USD")
     fiscal_year_start: Mapped[int] = mapped_column(Integer, default=1)  # Month
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=text("now()"), default=datetime.utcnow)
+    owner_user_id: Mapped[str] = mapped_column(String(36), nullable=True) # ID from auth.users
     settings: Mapped[dict] = mapped_column(JSON, default=dict)
 
     vendors = relationship("Vendor", back_populates="organization")
@@ -106,6 +107,7 @@ class Vendor(Base):
 
     organization = relationship("Organization", back_populates="vendors")
     invoices = relationship("Invoice", back_populates="vendor")
+    expenses = relationship("Expense", back_populates="vendor")
 
     __table_args__ = (Index("ix_vendors_org_id", "org_id"),)
 
@@ -166,6 +168,7 @@ class Expense(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_uuid)
     org_id: Mapped[str] = mapped_column(ForeignKey("organizations.id"), nullable=False)
+    vendor_id: Mapped[str] = mapped_column(ForeignKey("vendors.id"), nullable=True)
     
     description: Mapped[str] = mapped_column(String(500), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
@@ -189,6 +192,7 @@ class Expense(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     organization = relationship("Organization", back_populates="expenses")
+    vendor = relationship("Vendor", back_populates="expenses")
 
     __table_args__ = (
         Index("ix_expenses_org_id", "org_id"),

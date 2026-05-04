@@ -34,6 +34,7 @@ FORECAST_PROMPT = """You are a financial forecasting AI. Based on historical spe
 Return JSON: {
   "burn_rate_monthly": float,
   "runway_days": int,
+  "currency": str,
   "cash_flow_forecast": [{"month": str, "inflow": float, "outflow": float, "net": float}],
   "risk_scenarios": [{"scenario": str, "probability": str, "impact": str}],
   "confidence": float
@@ -90,15 +91,15 @@ class InsightAgent:
             "opportunities": [],
         }
 
-    async def forecast_cashflow(self, historical_data: dict, months: int = 3) -> dict:
+    async def forecast_cashflow(self, historical_data: dict, months: int = 3, currency: str = "USD") -> dict:
         """Generate cash flow forecast using GPT-4o."""
         async with AgentTimer(self.AGENT_ID, self.AGENT_NAME, "forecast_cashflow") as timer:
-            timer.input_summary = f"Forecasting {months} months from historical data"
+            timer.input_summary = f"Forecasting {months} months from historical data ({currency})"
             try:
                 result = await model_router.complete_with_usage(
                     task=ModelTask.FORECAST,
-                    system_prompt=FORECAST_PROMPT,
-                    user_prompt=f"Historical data (last 12 months):\n{json.dumps(historical_data, indent=2, default=str)[:3000]}\n\nForecast for next {months} months.",
+                    system_prompt=FORECAST_PROMPT + f"\nNote: All values must be in {currency}.",
+                    user_prompt=f"Historical data ({currency}):\n{json.dumps(historical_data, indent=2, default=str)[:3000]}\n\nForecast for next {months} months in {currency}.",
                     temperature=0.2,
                     max_tokens=1000,
                 )
@@ -118,6 +119,7 @@ class InsightAgent:
         return {
             "burn_rate_monthly": 0,
             "runway_days": 365,
+            "currency": currency,
             "cash_flow_forecast": [],
             "risk_scenarios": [],
             "confidence": 0.5,

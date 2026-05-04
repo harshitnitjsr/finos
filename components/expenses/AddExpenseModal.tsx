@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Plus, Loader2 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
@@ -9,20 +9,28 @@ interface AddExpenseModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  defaultCurrency?: string;
 }
 
-export default function AddExpenseModal({ isOpen, onClose, onSuccess }: AddExpenseModalProps) {
+export default function AddExpenseModal({ isOpen, onClose, onSuccess, defaultCurrency = "USD" }: AddExpenseModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     description: "",
     amount: "",
-    currency: "USD",
+    currency: defaultCurrency,
     vendor_name: "",
     department: "",
     transaction_date: new Date().toISOString().split("T")[0],
   });
+
+  // Sync default currency when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setFormData(prev => ({ ...prev, currency: defaultCurrency }));
+    }
+  }, [isOpen, defaultCurrency]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

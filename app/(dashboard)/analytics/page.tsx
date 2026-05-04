@@ -14,11 +14,11 @@ const iv = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition
 const COLORS = ["#3b82f6", "#10b981", "#8b5cf6", "#f59e0b", "#f43f5e", "#06b6d4", "#ec4899", "#84cc16"];
 
 interface TrendPoint { date: string; amount: number; currency: string; }
-interface TrendResp { data: TrendPoint[]; }
+interface TrendResp { data: TrendPoint[]; base_currency: string; }
 interface CategoryPoint { category: string; total: number; currency: string; }
-interface CategoryResp { data: CategoryPoint[]; }
+interface CategoryResp { data: CategoryPoint[]; base_currency: string; }
 interface VendorPoint { name: string; total: number; currency: string; }
-interface VendorResp { data: VendorPoint[]; }
+interface VendorResp { data: VendorPoint[]; base_currency: string; }
 
 function useTrend(days: number) {
   return useQuery<TrendResp>({
@@ -54,14 +54,19 @@ export default function AnalyticsPage() {
   const { data: catResp, isLoading: catLoading } = useCategories(90);
   const { data: vendorResp, isLoading: vendorLoading } = useVendors(90);
 
-  const trendData = (trendResp?.data || []).map((d: { date: string; amount: number; currency: string }) => ({
-    date: d.date ? new Date(d.date).toLocaleDateString("en", { month: "short", day: "numeric" }) : "",
-    actual: d.amount,
-    currency: d.currency,
-  }));
+  const baseCurrency = trendResp?.base_currency || catResp?.base_currency || "USD";
+  const CURRENCY_SYMBOLS: Record<string, string> = { USD: "$", INR: "₹", EUR: "€", GBP: "£", JPY: "¥" };
+  const currencySymbol = CURRENCY_SYMBOLS[baseCurrency] || "$";
 
-  const categoryData = catResp?.data || [];
-  const vendorData = vendorResp?.data || [];
+  const trendData = (trendResp?.data || [])
+    .map((d: { date: string; amount: number; currency: string }) => ({
+      date: d.date ? new Date(d.date).toLocaleDateString("en", { month: "short", day: "numeric" }) : "",
+      actual: d.amount,
+      currency: d.currency,
+    }));
+
+  const categoryData = (catResp?.data || []);
+  const vendorData = (vendorResp?.data || []);
 
   return (
     <motion.div variants={cv} initial="hidden" animate="show" className="space-y-6">
@@ -108,8 +113,8 @@ export default function AnalyticsPage() {
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                 <XAxis dataKey="date" tick={{ fill: "#475569", fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: "#475569", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `$${(v / 1000).toFixed(0)}K`} />
-                <Tooltip contentStyle={{ background: "#111827", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#f8fafc" }} formatter={(v: unknown) => [`$${(v as number).toLocaleString()}`, ""]} />
+                <YAxis tick={{ fill: "#475569", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `${currencySymbol}${(v / 1000).toFixed(0)}K`} />
+                <Tooltip contentStyle={{ background: "#111827", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#f8fafc" }} formatter={(v: unknown) => [`${currencySymbol}${(v as number).toLocaleString()}`, ""]} />
                 <Area type="monotone" dataKey="actual" stroke="#3b82f6" strokeWidth={2} fill="url(#trendGrad)" />
               </AreaChart>
             </ResponsiveContainer>
@@ -134,7 +139,7 @@ export default function AnalyticsPage() {
                     <Pie data={categoryData} cx="50%" cy="50%" innerRadius={60} outerRadius={90} dataKey="total" paddingAngle={2}>
                       {categoryData.map((_: unknown, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                     </Pie>
-                    <Tooltip contentStyle={{ background: "#111827", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#f8fafc" }} formatter={(v: unknown) => [`$${(v as number).toLocaleString()}`, ""]} />
+                    <Tooltip contentStyle={{ background: "#111827", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#f8fafc" }} formatter={(v: unknown) => [`${currencySymbol}${(v as number).toLocaleString()}`, ""]} />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
@@ -148,7 +153,7 @@ export default function AnalyticsPage() {
                           <div className="w-2.5 h-2.5 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
                           <span className="text-xs font-medium text-white truncate max-w-[100px]">{d.category}</span>
                         </div>
-                        <span className="text-xs font-semibold text-white">${(d.total / 1000).toFixed(0)}K</span>
+                        <span className="text-xs font-semibold text-white">{currencySymbol}{(d.total / 1000).toFixed(0)}K</span>
                       </div>
                       <div className="progress-bar h-1">
                         <div className="progress-fill" style={{ background: COLORS[i % COLORS.length], width: `${(d.total / max) * 100}%` }} />
@@ -176,8 +181,8 @@ export default function AnalyticsPage() {
               <BarChart data={vendorData.slice(0, 10)}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                 <XAxis dataKey="name" tick={{ fill: "#475569", fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: "#475569", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `$${(v / 1000).toFixed(0)}K`} />
-                <Tooltip contentStyle={{ background: "#111827", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#f8fafc" }} cursor={{ fill: "rgba(255,255,255,0.05)" }} formatter={(v: unknown) => [`$${(v as number).toLocaleString()}`, ""]} />
+                <YAxis tick={{ fill: "#475569", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `${currencySymbol}${(v / 1000).toFixed(0)}K`} />
+                <Tooltip contentStyle={{ background: "#111827", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#f8fafc" }} cursor={{ fill: "rgba(255,255,255,0.05)" }} formatter={(v: unknown) => [`${currencySymbol}${(v as number).toLocaleString()}`, ""]} />
                 <Bar dataKey="total" fill="#8b5cf6" radius={[4, 4, 0, 0]} barSize={36} />
               </BarChart>
             </ResponsiveContainer>

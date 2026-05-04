@@ -190,6 +190,25 @@ async def execute_payment_activity(invoice_id: str) -> str:
             
             invoice.status = "paid"
             invoice.paid_at = datetime.utcnow()
+
+            # 3. UPDATE VENDOR TOTAL & CREATE EXPENSE (Analytics Visibility)
+            if vendor:
+                vendor.total_paid = (vendor.total_paid or 0) + (invoice.total_amount or 0)
+                
+                # Create a matching expense record so this shows up in burn rate/spend charts
+                from app.models.models import Expense, ExpenseStatus
+                expense = Expense(
+                    org_id=invoice.org_id,
+                    description=f"Paid Invoice: {invoice.invoice_number or invoice.id[:8]} - {vendor.name}",
+                    amount=invoice.total_amount or 0,
+                    currency=invoice.currency,
+                    category=vendor.category or "Accounts Payable",
+                    status=ExpenseStatus.APPROVED,
+                    vendor_name=vendor.name,
+                    transaction_date=invoice.paid_at,
+                    extra_metadata={"invoice_id": str(invoice.id), "payment_id": payment_id}
+                )
+                db.add(expense)
             
             # Find and complete the live Workflow record
             from sqlalchemy import select
@@ -208,6 +227,8 @@ async def execute_payment_activity(invoice_id: str) -> str:
                 
             await db.commit()
             await cache.invalidate_pattern("invoices")
+            await cache.invalidate_pattern("vendors")
+            await cache.invalidate_pattern("dashboard")
             await cache.invalidate_pattern("workflows")
             
             return f"Payment successful via {payment_rail.upper()} rail! ID: {payment_id}"

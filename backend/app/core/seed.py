@@ -54,6 +54,19 @@ async def seed_demo_data():
 
         logger.info("Seeding demo data for user org...")
 
+        # Ensure the organization exists
+        org = await db.get(Organization, "cc95cadf-ba95-474f-929e-b77f8b0b934c")
+        if not org:
+            org = Organization(
+                id="cc95cadf-ba95-474f-929e-b77f8b0b934c",
+                name="Acme Corp (Demo)",
+                slug="acme-corp",
+                settings={"currency": "USD", "timezone": "UTC"}
+            )
+            db.add(org)
+            await db.flush()
+            logger.info("Created demo organization 'cc95cadf-ba95-474f-929e-b77f8b0b934c'")
+
         # Create vendors
         vendors = []
         for vd in VENDORS_DATA:

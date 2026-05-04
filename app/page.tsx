@@ -653,7 +653,7 @@ export default function HomePage() {
                     How much was our cloud spend in April?
                   </div>
                   <div className="max-w-[90%] p-5 rounded-2xl bg-emerald-600 text-white text-xs font-bold shadow-xl">
-                    Our multi-agent audit shows $14,282.40 across AWS and Vercel. 
+                    Our multi-agent audit shows total spend across AWS and Vercel. 
                     This is a 12% decrease from March. Would you like a breakdown?
                   </div>
                 </div>

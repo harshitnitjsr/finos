@@ -21,7 +21,7 @@ interface ExpenseItem {
 }
 interface ExpensesResp { expenses: ExpenseItem[]; total: number; }
 interface CategoryItem { category: string; currency: string; total: number; count: number; }
-interface CategoryResp { data: CategoryItem[]; }
+interface CategoryResp { data: CategoryItem[]; base_currency: string; }
 interface AnomalyResp { anomalies: ExpenseItem[]; total: number; }
 interface SaasDuplicates {
   total_potential_savings?: number;
@@ -77,8 +77,10 @@ export default function ExpensesPage() {
 
   const expenses: ExpenseItem[] = allData?.expenses || [];
   const anomalies: ExpenseItem[] = anomalyData?.anomalies || [];
+  const baseCurrency = categoryData?.base_currency || "USD";
+  const currencySymbol = CURRENCY_SYMBOLS[baseCurrency] || "$";
   const categories: CategoryItem[] = categoryData?.data || [];
-  const usdCats = categories.filter(c => c.currency === "USD").slice(0, 8);
+  const baseCats = categories.slice(0, 8);
 
   const displayed = activeTab === "anomalies" ? anomalies
     : activeTab === "recurring" ? expenses.filter(e => e.is_recurring)
@@ -137,20 +139,20 @@ export default function ExpensesPage() {
       <motion.div variants={iv} className="card p-5">
         <div className="flex items-center gap-2 mb-4">
           <TrendingUp size={16} className="text-emerald-400" />
-          <h2 className="text-sm font-semibold text-white">Spend by Category (USD)</h2>
+          <h2 className="text-sm font-semibold text-white">Spend by Category ({baseCurrency})</h2>
         </div>
-        {usdCats.length === 0 ? (
+        {baseCats.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 rounded-xl" style={{ height: 160, background: "var(--color-bg-elevated)", border: "1px dashed var(--color-border)" }}>
             <InboxIcon size={18} style={{ color: "var(--color-text-muted)" }} />
             <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>No category data yet</p>
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={160}>
-            <BarChart data={usdCats} layout="vertical">
+            <BarChart data={baseCats} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" horizontal={false} />
-              <XAxis type="number" tick={{ fill: "#475569", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `$${(v / 1000).toFixed(0)}K`} />
+              <XAxis type="number" tick={{ fill: "#475569", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={v => `${currencySymbol}${(v / 1000).toFixed(0)}K`} />
               <YAxis type="category" dataKey="category" tick={{ fill: "#94a3b8", fontSize: 11 }} axisLine={false} tickLine={false} width={140} />
-              <Tooltip contentStyle={{ background: "#111827", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#f8fafc" }} formatter={(v: unknown) => [`$${(v as number).toLocaleString()}`, ""]} />
+              <Tooltip contentStyle={{ background: "#111827", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12, color: "#f8fafc" }} formatter={(v: unknown) => [`${currencySymbol}${(v as number).toLocaleString()}`, ""]} />
               <Bar dataKey="total" fill="#10b981" radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
@@ -212,7 +214,9 @@ export default function ExpensesPage() {
               {subscriptionData.total_monthly != null && (
                 <div className="card p-4 flex items-center justify-between">
                   <span className="text-sm" style={{ color: "var(--color-text-muted)" }}>Total Monthly Subscriptions</span>
-                  <span className="text-xl font-bold text-blue-400">${subscriptionData.total_monthly.toLocaleString()}</span>
+                  <p className="text-xl font-black text-blue-400">
+                    {currencySymbol}{(subscriptionData.total_monthly as number || 0).toLocaleString()}
+                  </p>
                 </div>
               )}
               {subscriptionData.saas_duplicates && Object.keys(subscriptionData.saas_duplicates).length > 0 && (
@@ -225,9 +229,9 @@ export default function ExpensesPage() {
                   {subscriptionData.saas_duplicates.total_potential_savings != null && (
                     <div className="flex items-center justify-between p-3 rounded-xl" style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)" }}>
                       <span className="text-sm text-white font-semibold">Total Potential Savings</span>
-                      <span className="text-lg font-bold text-emerald-400">
-                        ${Number(subscriptionData.saas_duplicates.total_potential_savings).toLocaleString()}
-                      </span>
+                      <p className="text-xl font-black text-emerald-400">
+                        {currencySymbol}{(subscriptionData.saas_duplicates?.total_potential_savings as number || 0).toLocaleString()}
+                      </p>
                     </div>
                   )}
 
@@ -390,6 +394,7 @@ export default function ExpensesPage() {
           queryClient.invalidateQueries({ queryKey: ["expense-categories"] });
           queryClient.invalidateQueries({ queryKey: ["anomalies"] });
         }}
+        defaultCurrency={baseCurrency}
       />
     </motion.div>
   );

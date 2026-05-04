@@ -97,11 +97,24 @@ async def signal_invoice_workflow(request: SignalInvoiceRequest):
         # Immediately update UI state so it feels responsive and the button hides
         invoice_data: dict = {}
         async with AsyncSessionLocal() as db:
+            from app.models.models import Approval
+            from sqlalchemy import select, update
+            
             invoice = await db.get(Invoice, request.invoice_id)
             if invoice:
                 invoice.status = new_status
+                
+                # Also update the Approval record so the Approval Center shows it as finished
+                approval_status = "approved" if request.action == "approve" else "rejected"
+                await db.execute(
+                    update(Approval)
+                    .where(Approval.invoice_id == request.invoice_id, Approval.status == "pending")
+                    .values(status=approval_status)
+                )
+                
                 await db.commit()
                 await cache.invalidate_pattern("invoices")
+                await cache.invalidate_pattern("approvals")
                 invoice_data = {
                     "org_id": invoice.org_id,
                     "invoice_id": str(invoice.id),

@@ -230,23 +230,9 @@ async def process_invoice_background(invoice_id: str, file_path: str, content_ty
             invoice.ai_confidence = float(risk.get("confidence", 0.92))
             await db.commit()
 
-            # ── Step 7: Create approval record ──────────────────────────────
-            approval = Approval(
-                org_id=org_id,
-                invoice_id=invoice_id,
-                status="pending",
-                amount=invoice.total_amount or invoice.amount,
-                currency=invoice.currency,
-                risk_score=invoice.risk_score,
-                risk_level=invoice.risk_level,
-                ai_recommendation=risk.get("recommendation", "approve"),
-                ai_explanation=risk.get("explanation", "AI analysis complete"),
-                policy_checks=invoice.policy_violations,
-            )
-            db.add(approval)
-            await db.commit()
-
-            # ── Step 8: Invalidate Redis caches ─────────────────────────────
+            # ── Step 7: Redis Cache Invalidation ─────────────────────────────
+            # We no longer create the Approval record here. 
+            # It is created durably within the Temporal workflow's compliance activity.
             await cache.invalidate_pattern("dashboard")
             await cache.invalidate_pattern("analytics")
 

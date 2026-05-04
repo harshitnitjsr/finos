@@ -5,18 +5,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, literal_column, text
 from app.core.database import get_db
 from app.core.redis_client import cache, TTL_DASHBOARD, TTL_ANALYTICS
-from app.models.models import Invoice, Expense, Approval, Vendor, Workflow, AgentLog
+from app.models.models import Invoice, Expense, Approval, Vendor, Workflow, AgentLog, Organization
 from app.api.deps import get_org_id
+
+from app.core.fx import fx_service
 
 router = APIRouter()
 
-CURRENCIES = {
-    "USD": {"symbol": "$", "rate": 1.0},
-    "INR": {"symbol": "₹", "rate": 83.5},
-    "EUR": {"symbol": "€", "rate": 0.92},
-    "GBP": {"symbol": "£", "rate": 0.79},
-    "JPY": {"symbol": "¥", "rate": 149.5},
-}
+# Removed static CURRENCIES dictionary
 
 
 @router.get("/dashboard")
@@ -30,9 +26,16 @@ async def dashboard_metrics(
         return cached
 
     now = datetime.utcnow()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    last_month_start = (month_start - timedelta(days=1)).replace(day=1)
     thirty_days_ago = now - timedelta(days=30)
     prev_thirty = now - timedelta(days=60)
     ninety_days_ago = now - timedelta(days=90)
+
+    # Get organization default currency and FX rates
+    org_res = await db.execute(select(Organization.default_currency).where(Organization.id == org_id))
+    base_currency = org_res.scalar_one_or_none() or "USD"
+    rates = await fx_service.get_rates(base_currency)
 
     # Invoice stats by currency
     inv_result = await db.execute(
@@ -64,7 +67,7 @@ async def dashboard_metrics(
     )
     monthly_spend = monthly_result.all()
 
-    # Previous month spend (for trend)
+    # Consolidate previous month spend (for trend)
     prev_result = await db.execute(
         select(func.sum(Expense.amount).label("total"), Expense.currency)
         .where(
@@ -73,7 +76,10 @@ async def dashboard_metrics(
             Expense.transaction_date < thirty_days_ago,
         ).group_by(Expense.currency)
     )
-    prev_spend = {r.currency: float(r.total or 0) for r in prev_result.all()}
+    prev_total_base = sum(
+        fx_service.convert(float(r.total or 0), r.currency, base_currency, rates)
+        for r in prev_result.all()
+    )
 
     # Anomalies
     anomaly_result = await db.execute(
@@ -132,78 +138,63 @@ async def dashboard_metrics(
         .group_by(Invoice.status)
     )
     invoice_by_status = {r.status: r.count for r in inv_status_result.all()}
+    
+    # ── Consolidate and format results ───────────────────────────────────────
+    
+    # Consolidate monthly spend with trend %
+    monthly_data = []
+    total_curr_base = 0
+    for r in monthly_spend:
+        base_val = fx_service.convert(float(r.total or 0), r.currency, base_currency, rates)
+        total_curr_base += base_val
+        monthly_data.append({"currency": r.currency, "total": float(r.total or 0)})
+    
+    # Add a pseudo-entry for the base total so frontend knows the consolidated value
+    monthly_data.append({"currency": base_currency, "total": total_curr_base, "is_consolidated": True})
+    
+    # Calculate global trend %
+    change_pct = 0
+    if prev_total_base > 0:
+        change_pct = round(((total_curr_base - prev_total_base) / prev_total_base) * 100, 1)
+    
+    # Map consolidated entries for charts
+    # We add a change_pct to the base currency entry specifically
+    for m in monthly_data:
+        if m.get("is_consolidated"):
+            m["change_pct"] = change_pct
 
-    # Top vendors by spend (30 days)
-    vendor_spend_result = await db.execute(
-        select(
-            Expense.vendor_name,
-            func.sum(Expense.amount).label("total"),
-            Expense.currency,
-        ).where(
-            Expense.org_id == org_id,
-            Expense.vendor_name.isnot(None),
-            Expense.transaction_date >= thirty_days_ago,
-        ).group_by(Expense.vendor_name, Expense.currency)
-        .order_by(desc(func.sum(Expense.amount)))
-        .limit(10)
-    )
-    vendor_spend = vendor_spend_result.all()
+    # Trend: aggregate by day across all currencies
+    consolidated_trend = {}
+    for r in trend_data:
+        d_str = r.day.date().isoformat()
+        amt_base = fx_service.convert(float(r.total or 0), r.currency, base_currency, rates)
+        consolidated_trend[d_str] = consolidated_trend.get(d_str, 0) + amt_base
+    
+    formatted_trend = [{"date": d, "amount": amt, "currency": base_currency} for d, amt in sorted(consolidated_trend.items())]
+
+    # Categories: group by category, convert to base
+    consolidated_cats = {}
+    for r in category_data:
+        amt_base = fx_service.convert(float(r.total or 0), r.currency, base_currency, rates)
+        consolidated_cats[r.category] = consolidated_cats.get(r.category, 0) + amt_base
+    
+    formatted_cats = [{"category": c, "amount": amt, "currency": base_currency} for c, amt in consolidated_cats.items()]
+    formatted_cats.sort(key=lambda x: x["amount"], reverse=True)
 
     response = {
+        "base_currency": base_currency,
         "kpis": {
-            "total_invoices": sum(r.total for r in invoice_stats),
-            "total_invoice_value": [
-                {"currency": r.currency, "total": float(r.total_value or 0)}
-                for r in invoice_stats
-            ],
+            "monthly_spend": monthly_data,
             "pending_approvals": pending_approvals,
-            "monthly_spend": [
-                {
-                    "currency": r.currency,
-                    "total": float(r.total or 0),
-                    "prev_total": prev_spend.get(r.currency, 0),
-                    "change_pct": (
-                        round(
-                            ((float(r.total or 0) - prev_spend.get(r.currency, 0))
-                             / max(prev_spend.get(r.currency, 1), 1)) * 100,
-                            1,
-                        )
-                        if prev_spend.get(r.currency, 0) > 0 else 0
-                    ),
-                }
-                for r in monthly_spend
-            ],
             "anomaly_count": anomaly_count,
             "active_workflows": active_workflows,
-            "invoice_by_status": invoice_by_status,
+            "invoice_stats": [{"currency": r.currency, "count": r.total, "value": float(r.total_value or 0)} for r in invoice_stats],
+            "invoice_status": invoice_by_status,
         },
         "charts": {
-            "expense_trend": [
-                {
-                    "date": r.day.strftime("%Y-%m-%d") if r.day else None,
-                    "amount": float(r.total or 0),
-                    "currency": r.currency,
-                }
-                for r in trend_data
-            ],
-            "category_breakdown": [
-                {
-                    "category": r.category or "Uncategorized",
-                    "amount": float(r.total or 0),
-                    "currency": r.currency,
-                }
-                for r in category_data
-            ],
-            "vendor_spend": [
-                {
-                    "name": r.vendor_name,
-                    "total": float(r.total or 0),
-                    "currency": r.currency,
-                }
-                for r in vendor_spend
-            ],
+            "expense_trend": formatted_trend,
+            "category_breakdown": formatted_cats,
         },
-        "currencies": CURRENCIES,
         "generated_at": now.isoformat(),
     }
 
@@ -235,11 +226,22 @@ async def spend_trend(
         ).group_by("day", Expense.currency)
         .order_by("day")
     )
-    data = [
-        {"date": r.day.strftime("%Y-%m-%d") if r.day else None, "amount": float(r.total or 0), "currency": r.currency}
-        for r in result.all()
-    ]
-    response = {"data": data, "days": days}
+    # Get organization default currency and FX rates
+    org_res = await db.execute(select(Organization.default_currency).where(Organization.id == org_id))
+    base_currency = org_res.scalar_one_or_none() or "USD"
+    rates = await fx_service.get_rates(base_currency)
+
+    # Consolidate by day
+    consolidated = {}
+    for r in result.all():
+        d_str = r.day.strftime("%Y-%m-%d") if r.day else None
+        if not d_str: continue
+        amt_base = fx_service.convert(float(r.total or 0), r.currency, base_currency, rates)
+        consolidated[d_str] = consolidated.get(d_str, 0) + amt_base
+    
+    formatted = [{"date": d, "amount": amt, "currency": base_currency} for d, amt in sorted(consolidated.items())]
+
+    response = {"data": formatted, "days": days, "base_currency": base_currency}
     await cache.set("spend_trend", response, TTL_ANALYTICS, cache_key)
     return response
 
@@ -271,16 +273,23 @@ async def vendor_breakdown(
         .order_by(desc(func.sum(Expense.amount)))
         .limit(15)
     )
-    data = [
-        {
-            "name": r.vendor_name,
-            "total": float(r.total or 0),
-            "currency": r.currency,
-            "transactions": r.transactions,
-        }
-        for r in result.all()
-    ]
-    response = {"data": data}
+    # Get organization default currency and FX rates
+    org_res = await db.execute(select(Organization.default_currency).where(Organization.id == org_id))
+    base_currency = org_res.scalar_one_or_none() or "USD"
+    rates = await fx_service.get_rates(base_currency)
+
+    # Consolidate by vendor
+    consolidated = {}
+    for r in result.all():
+        amt_base = fx_service.convert(float(r.total or 0), r.currency, base_currency, rates)
+        if r.vendor_name not in consolidated:
+            consolidated[r.vendor_name] = {"name": r.vendor_name, "total": 0, "transactions": 0, "currency": base_currency}
+        consolidated[r.vendor_name]["total"] += amt_base
+        consolidated[r.vendor_name]["transactions"] += r.transactions
+    
+    formatted = sorted(consolidated.values(), key=lambda x: x["total"], reverse=True)
+
+    response = {"data": formatted, "days": days, "base_currency": base_currency}
     await cache.set("vendor_breakdown", response, TTL_ANALYTICS, cache_key)
     return response
 
@@ -312,17 +321,23 @@ async def category_breakdown(
         ).group_by(Expense.category, Expense.currency)
         .order_by(desc(func.sum(Expense.amount)))
     )
-    data = [
-        {
-            "category": r.category,
-            "currency": r.currency,
-            "total": float(r.total or 0),
-            "count": r.count,
-            "avg": float(r.avg or 0),
-        }
-        for r in result.all()
-    ]
-    response = {"data": data}
+    # Get organization default currency and FX rates
+    org_res = await db.execute(select(Organization.default_currency).where(Organization.id == org_id))
+    base_currency = org_res.scalar_one_or_none() or "USD"
+    rates = await fx_service.get_rates(base_currency)
+
+    # Consolidate by category
+    consolidated = {}
+    for r in result.all():
+        amt_base = fx_service.convert(float(r.total or 0), r.currency, base_currency, rates)
+        if r.category not in consolidated:
+            consolidated[r.category] = {"category": r.category, "total": 0, "count": 0, "currency": base_currency}
+        consolidated[r.category]["total"] += amt_base
+        consolidated[r.category]["count"] += r.count
+    
+    formatted = sorted(consolidated.values(), key=lambda x: x["total"], reverse=True)
+
+    response = {"data": formatted, "days": days, "base_currency": base_currency}
     await cache.set("category_breakdown", response, TTL_ANALYTICS, cache_key)
     return response
 
@@ -372,8 +387,11 @@ async def get_notifications(
             Expense.org_id == org_id, Expense.is_anomaly == True
         ).order_by(desc(Expense.created_at)).limit(2)
     )
+    # Inline mapping for notifications since it's a simple list
+    SYM = {"USD": "$", "INR": "₹", "EUR": "€", "GBP": "£", "JPY": "¥"}
     for exp in anomaly_res.scalars():
-        amount_str = f"{CURRENCIES.get(exp.currency, {'symbol': exp.currency})['symbol']}{exp.amount:,.0f}"
+        symbol = SYM.get(exp.currency, exp.currency)
+        amount_str = f"{symbol}{exp.amount:,.0f}"
         notifications.append({
             "id": f"anom-{exp.id}",
             "title": f"Policy Alert: {amount_str} — {exp.vendor_name or 'Unknown vendor'}",

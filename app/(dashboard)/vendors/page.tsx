@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -22,7 +22,7 @@ interface VendorDetail extends Vendor {
   vendor_health?: Record<string, unknown>;
   health_analysis?: Record<string, unknown>;
 }
-interface VendorsResp { vendors: Vendor[]; total: number; }
+interface VendorsResp { vendors: Vendor[]; total: number; base_currency?: string; }
 interface SemanticMatch { id: string; score: number; name?: string; category?: string; risk_level?: string; }
 
 const RISK_STYLES: Record<string, { color: string; bg: string; icon: React.ReactNode }> = {
@@ -30,7 +30,7 @@ const RISK_STYLES: Record<string, { color: string; bg: string; icon: React.React
   medium: { color: "#f59e0b", bg: "rgba(245,158,11,0.1)",  icon: <AlertTriangle size={12} /> },
   high:   { color: "#f43f5e", bg: "rgba(244,63,94,0.1)",   icon: <AlertTriangle size={12} /> },
 };
-const CURRENCY_SYMBOLS: Record<string, string> = { USD: "$", INR: "₹", EUR: "€", GBP: "£" };
+const CURRENCY_SYMBOLS: Record<string, string> = { USD: "$", INR: "₹", EUR: "€", GBP: "£", JPY: "¥" };
 
 function useVendors(params: { category?: string; risk_level?: string }) {
   const sp = new URLSearchParams();
@@ -59,11 +59,18 @@ export default function VendorsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [semanticResults, setSemanticResults] = useState<SemanticMatch[]>([]);
   const [searching, setSearching] = useState(false);
-  const [createForm, setCreateForm] = useState({ name: "", email: "", category: "", payment_currency: "USD" });
-
   const { data, isLoading } = useVendors({ risk_level: riskFilter || undefined });
   const { data: detail, isLoading: detailLoading } = useVendorDetail(selectedId, healthCheck);
   const vendors: Vendor[] = data?.vendors || [];
+  const baseCurrency = data?.base_currency || "USD";
+  const currencySymbol = CURRENCY_SYMBOLS[baseCurrency] || "$";
+
+  const [createForm, setCreateForm] = useState({ name: "", email: "", category: "", payment_currency: baseCurrency });
+  
+  // Sync default currency
+  useEffect(() => {
+    if (baseCurrency) setCreateForm(prev => ({ ...prev, payment_currency: baseCurrency }));
+  }, [baseCurrency]);
 
   const createMutation = useMutation({
     mutationFn: (body: typeof createForm) => apiFetch("/vendors/", { method: "POST", body: JSON.stringify(body) }),
@@ -194,7 +201,7 @@ export default function VendorsPage() {
                   <div className="p-2 rounded-lg text-center" style={{ background: "var(--color-bg-elevated)" }}>
                     <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>Total Paid</p>
                     <p className="text-sm font-bold text-white">
-                      {CURRENCY_SYMBOLS[vendor.payment_currency] || "$"}{(vendor.total_paid / 1000).toFixed(0)}K
+                      {currencySymbol}{(vendor.total_paid / 1000).toFixed(0)}K
                     </p>
                   </div>
                   <div className="p-2 rounded-lg text-center" style={{ background: "var(--color-bg-elevated)" }}>

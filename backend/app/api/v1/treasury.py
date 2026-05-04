@@ -8,12 +8,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
 from app.core.database import get_db
 from app.core.redis_client import cache, TTL_TREASURY
-from app.models.models import Expense, Invoice, Vendor
+from app.models.models import Expense, Invoice, Vendor, Organization
 from app.agents.insight_agent import insight_agent
 from app.agents.forecasting_agent import forecasting_agent
 from app.api.deps import get_org_id
 
 router = APIRouter()
+
+# Simple internal exchange rates for reporting (INR as base for some calculations)
+CURRENCY_RATES = {
+    "USD": 1.0,
+    "INR": 0.012, # 1 INR = 0.012 USD approx
+    "EUR": 1.08,
+    "GBP": 1.26,
+}
+
+def convert_to_base(amount: float, from_curr: str, to_curr: str) -> float:
+    """Rough conversion for forecasting purposes."""
+    if from_curr == to_curr:
+        return amount
+    usd_amount = amount * CURRENCY_RATES.get(from_curr, 1.0)
+    return usd_amount / CURRENCY_RATES.get(to_curr, 1.0)
 
 @router.get("/summary")
 async def treasury_summary(
@@ -33,6 +48,10 @@ async def treasury_summary(
     now = datetime.utcnow()
     thirty_days_ago = now - timedelta(days=30)
     next_thirty = now + timedelta(days=30)
+
+    # Get organization default currency
+    org_res = await db.execute(select(Organization.default_currency).where(Organization.id == org_id))
+    base_currency = org_res.scalar_one_or_none() or "USD"
 
     # Monthly burn by currency from actual expense data
     burn_result = await db.execute(
@@ -75,12 +94,25 @@ async def treasury_summary(
     )
     upcoming_invoices = upcoming_result.scalars().all()
 
-    # Compute runway: USD monthly burn / estimated cash (use total_paid as baseline)
-    usd_burn = next((b["amount"] for b in monthly_burn if b["currency"] == "USD"), 0)
-    usd_cash_est = total_paid.get("USD", 0) + 850000  # Seed starting balance
-    runway_days = int(usd_cash_est / max(usd_burn, 1) * 30) if usd_burn > 0 else 9999
+    # Compute runway: Sum all burn converted to base currency / estimated cash
+    total_base_burn = sum(
+        convert_to_base(b["amount"], b["currency"], base_currency)
+        for b in monthly_burn
+    )
+    
+    # Starting balances (proxy)
+    starting_balances = {"USD": 850000, "INR": 70000000, "EUR": 500000, "GBP": 400000}
+    base_starting = starting_balances.get(base_currency, 500000)
+    
+    # Total cash in base currency
+    total_base_cash = base_starting + sum(
+        convert_to_base(amount, curr, base_currency)
+        for curr, amount in total_paid.items()
+    )
+    
+    runway_days = int(total_base_cash / max(total_base_burn, 1) * 30) if total_base_burn > 0 else 9999
 
-    # 90-day historical spend for AI forecast context
+    # 90-day historical spend for AI forecast context (aggregate all into base)
     historical_result = await db.execute(
         select(
             func.date_trunc("month", Expense.transaction_date).label("month"),
@@ -89,19 +121,26 @@ async def treasury_summary(
         ).where(
             Expense.org_id == org_id,
             Expense.transaction_date >= now - timedelta(days=90),
-            Expense.currency == "USD",
         ).group_by("month", Expense.currency)
         .order_by("month")
     )
+    
+    history_agg: dict[str, float] = {}
+    for r in historical_result.all():
+        month_str = r.month.strftime("%Y-%m") if r.month else None
+        if month_str:
+            history_agg[month_str] = history_agg.get(month_str, 0) + convert_to_base(float(r.total or 0), r.currency, base_currency)
+            
     monthly_history = [
-        {"month": r.month.strftime("%Y-%m") if r.month else None, "spend": float(r.total or 0)}
-        for r in historical_result.all()
+        {"month": m, "spend": s}
+        for m, s in sorted(history_agg.items())
     ]
 
     response = {
         "monthly_burn": monthly_burn,
         "runway_days": runway_days,
-        "monthly_history_usd": monthly_history,
+        "base_currency": base_currency,
+        "monthly_history": monthly_history,
         "upcoming_payments": [
             {
                 "invoice_id": str(inv.id),
@@ -133,6 +172,10 @@ async def cash_flow_forecast(
     if cached:
         return cached
 
+    # Get organization default currency
+    org_res = await db.execute(select(Organization.default_currency).where(Organization.id == org_id))
+    base_currency = org_res.scalar_one_or_none() or "USD"
+    
     now = datetime.utcnow()
 
     # Pull 6 months of real spend data per currency
@@ -149,37 +192,38 @@ async def cash_flow_forecast(
     )
     rows = result.all()
 
+    # Aggregate historical into base currency
+    hist_agg: dict[str, float] = {}
+    for r in rows:
+        m = r.month.strftime("%Y-%m") if r.month else None
+        if m:
+            hist_agg[m] = hist_agg.get(m, 0) + convert_to_base(float(r.total or 0), r.currency, base_currency)
+
     historical = {
         "months": [
-            {
-                "month": r.month.strftime("%Y-%m") if r.month else None,
-                "spend": float(r.total or 0),
-                "currency": r.currency,
-            }
-            for r in rows
+            {"month": m, "spend": s, "currency": base_currency}
+            for m, s in sorted(hist_agg.items())
         ],
-        "avg_monthly_burn": sum(float(r.total or 0) for r in rows if r.currency == "USD") / max(
-            len([r for r in rows if r.currency == "USD"]), 1
-        ),
-        "currency": "USD",
+        "avg_monthly_burn": sum(hist_agg.values()) / max(len(hist_agg), 1),
+        "currency": base_currency,
     }
 
     # insight_agent: cashflow narrative + macro analysis
-    forecast = await insight_agent.forecast_cashflow(historical)
+    forecast = await insight_agent.forecast_cashflow(historical, currency=base_currency)
 
     # forecasting_agent: runway analysis using monthly expense breakdown
     monthly_expenses = [
-        {"month": r.month.strftime("%Y-%m") if r.month else None,
-         "spend": float(r.total or 0), "currency": r.currency}
-        for r in rows if r.currency == "USD"
+        {"month": m, "spend": s, "currency": base_currency}
+        for m, s in sorted(hist_agg.items())
     ]
     # rough cash estimate from latest position
-    usd_rows = [r for r in rows if r.currency == "USD"]
-    cash_on_hand = 1200000.0  # starting balance (org config in prod)
+    starting_balances = {"USD": 1200000.0, "INR": 90000000.0}
+    cash_on_hand = starting_balances.get(base_currency, 1000000.0)
     try:
         runway_analysis = await forecasting_agent.forecast_runway(
             monthly_expenses=monthly_expenses,
             cash_on_hand=cash_on_hand,
+            currency=base_currency
         )
         forecast["runway_analysis"] = runway_analysis
     except Exception:
@@ -200,6 +244,10 @@ async def budget_forecast(
     if cached:
         return cached
 
+    # Get organization default currency
+    org_res = await db.execute(select(Organization.default_currency).where(Organization.id == org_id))
+    base_currency = org_res.scalar_one_or_none() or "USD"
+
     now = datetime.utcnow()
     result = await db.execute(
         select(
@@ -208,7 +256,7 @@ async def budget_forecast(
             func.sum(Expense.amount).label("total"),
         ).where(
             Expense.org_id == org_id,
-            Expense.currency == "USD",
+            Expense.currency == base_currency,
             Expense.transaction_date >= now - timedelta(days=90),
         ).group_by(Expense.category, "month")
         .order_by(Expense.category, "month")
@@ -231,6 +279,7 @@ async def budget_forecast(
     budget = await forecasting_agent.forecast_budget(
         historical_by_category=historical_by_category,
         months=months_ahead,
+        currency=base_currency
     )
 
     await cache.set("treasury_budget", budget, 300, f"{org_id}:{months_ahead}")

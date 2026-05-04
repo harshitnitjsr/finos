@@ -71,13 +71,13 @@ async def get_approval(approval_id: str, db: AsyncSession = Depends(get_db)):
 @router.post("/{approval_id}/approve")
 async def approve(approval_id: str, db: AsyncSession = Depends(get_db)):
     """Quick approve endpoint (no body required)."""
-    return await _decide(approval_id, "approve", db)
+    return await _decide(approval_id, "approved", db)
 
 
 @router.post("/{approval_id}/reject")
 async def reject(approval_id: str, db: AsyncSession = Depends(get_db)):
     """Quick reject endpoint (no body required)."""
-    return await _decide(approval_id, "reject", db)
+    return await _decide(approval_id, "rejected", db)
 
 
 @router.post("/{approval_id}/decide")
