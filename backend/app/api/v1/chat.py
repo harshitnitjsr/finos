@@ -21,6 +21,7 @@ from loguru import logger
 from app.core.database import get_db
 from app.core.memory import memory_service
 from app.core.redis_client import cache
+from app.core.subscription import require_prompt_quota, increment_prompt_usage
 from app.api.deps import get_org_id
 from fastapi import HTTPException
 
@@ -56,6 +57,8 @@ class ChatResponse(BaseModel):
 async def chat_stream(
     request: ChatRequest,
     org_id: str = Depends(get_org_id),
+    db: AsyncSession = Depends(get_db),
+    _sub: dict = Depends(require_prompt_quota),   # 402 if prompt limit hit
 ):
     """
     SSE streaming chat — same pipeline as POST /chat but streams tokens.
@@ -77,8 +80,9 @@ async def chat_stream(
         )
     from app.langgraph.streaming import stream_agent_response
 
-    # ── Track daily message count per org (Redis counter) ─────────────────
+    # ── Track daily message count + subscription prompt counter ──────────
     await cache.increment_counter("chat_messages", org_id)
+    await increment_prompt_usage(org_id, db)
 
     memory_context, lc_history = await memory_service.get_context(
         session_id=request.session_id,
@@ -155,7 +159,8 @@ async def chat_stream(
 async def chat(
     request: ChatRequest,
     org_id: str = Depends(get_org_id),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _sub: dict = Depends(require_prompt_quota),   # 402 if prompt limit hit
 ):
     """
     Multi-agent chat with 3-tier memory-augmented RAG.
@@ -236,6 +241,9 @@ async def chat(
         tokens_used=total_tokens,
         duration_ms=duration_ms,
     )
+
+    # ── 5. Increment prompt usage counter ───────────────────────────────────
+    await increment_prompt_usage(org_id, db)
 
     logger.info(
         f"Chat: session={request.session_id} intent={intent} "

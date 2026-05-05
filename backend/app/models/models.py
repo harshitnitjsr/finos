@@ -86,6 +86,14 @@ class RiskLevel(str, enum.Enum):
     CRITICAL = "critical"
 
 
+class SubscriptionStatus(str, enum.Enum):
+    FREE = "free"
+    ACTIVE = "active"
+    PAST_DUE = "past_due"
+    CANCELLED = "cancelled"
+    PAUSED = "paused"
+
+
 class Organization(Base):
     __tablename__ = "organizations"
 
@@ -642,4 +650,82 @@ class Payment(Base):
         Index("ix_payments_invoice_id", "invoice_id"),
         Index("ix_payments_status", "status"),
         Index("ix_payments_created_at", "created_at"),
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Subscription / Billing Models
+# ─────────────────────────────────────────────────────────────────────────────
+
+class SubscriptionPlan(Base):
+    """
+    Catalogue of subscription tiers seeded at startup.
+    slug is the stable identifier used in code (free, starter, pro, enterprise).
+    """
+    __tablename__ = "subscription_plans"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_uuid)
+    slug: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)  # free|starter|pro|enterprise
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=True)
+
+    # Pricing (in INR paise for Razorpay, 0 for free)
+    price_monthly_inr: Mapped[int] = mapped_column(Integer, default=0)  # e.g. 99900 = ₹999
+
+    # Razorpay Plan ID (populated after plan is created in Razorpay dashboard)
+    razorpay_plan_id: Mapped[str] = mapped_column(String(100), nullable=True)
+
+    # Feature limits (-1 = unlimited)
+    max_invoices_per_month: Mapped[int] = mapped_column(Integer, default=5)
+    max_prompts_per_month: Mapped[int] = mapped_column(Integer, default=10)
+
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    subscriptions = relationship("OrganizationSubscription", back_populates="plan")
+
+    __table_args__ = (Index("ix_subscription_plans_slug", "slug"),)
+
+
+class OrganizationSubscription(Base):
+    """
+    Tracks the current billing state for one organization.
+    One org has at most one active subscription row.
+    Usage counters (invoices_used, prompts_used) reset each billing cycle.
+    """
+    __tablename__ = "organization_subscriptions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_uuid)
+    org_id: Mapped[str] = mapped_column(ForeignKey("organizations.id"), unique=True, nullable=False)
+    plan_id: Mapped[str] = mapped_column(ForeignKey("subscription_plans.id"), nullable=False)
+
+    status: Mapped[str] = mapped_column(String(30), default=SubscriptionStatus.FREE)
+
+    # Razorpay identifiers
+    razorpay_subscription_id: Mapped[str] = mapped_column(String(100), nullable=True, unique=True)
+    razorpay_customer_id: Mapped[str] = mapped_column(String(100), nullable=True)
+
+    # Billing cycle dates
+    current_period_start: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    current_period_end: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+
+    # Usage counters — reset monthly via webhook
+    invoices_used: Mapped[int] = mapped_column(Integer, default=0)
+    prompts_used: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Webhook event log (last 10 events)
+    webhook_events: Mapped[list] = mapped_column(JSON, default=list)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    plan = relationship("SubscriptionPlan", back_populates="subscriptions")
+    organization = relationship("Organization")
+
+    __table_args__ = (
+        Index("ix_org_subscriptions_org_id", "org_id"),
+        Index("ix_org_subscriptions_razorpay_sub_id", "razorpay_subscription_id"),
     )

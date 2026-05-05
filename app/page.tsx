@@ -543,7 +543,7 @@ export default function HomePage() {
               >
                 <div className="text-[10px] font-black uppercase tracking-widest text-white/40 mb-4">Multi-Rail</div>
                 <Layers className="w-16 h-16 group-hover:rotate-90 transition-transform duration-500 mb-4" />
-                <span className="text-[10px] font-black uppercase text-center leading-tight text-white/80">Stripe / ACH / Card</span>
+                <span className="text-[10px] font-black uppercase text-center leading-tight text-white/80">Payment Approval</span>
               </motion.div>
             </div>
           </div>

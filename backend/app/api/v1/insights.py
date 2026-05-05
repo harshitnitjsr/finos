@@ -12,13 +12,15 @@ from app.models.models import Expense, Invoice, Approval, Vendor
 from app.agents.insight_agent import insight_agent
 
 from app.api.deps import get_org_id
+from app.core.subscription import require_active_subscription
 
 router = APIRouter()
 
 @router.get("/executive-summary")
 async def executive_summary(
     org_id: str = Depends(get_org_id),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _sub: dict = Depends(require_active_subscription),  # 402 if trial expired / sub inactive
 ):
     """
     GPT-4o executive financial summary with real data context.
@@ -88,7 +90,8 @@ async def executive_summary(
 @router.get("/recommendations")
 async def recommendations(
     org_id: str = Depends(get_org_id),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _sub: dict = Depends(require_active_subscription),  # 402 if trial expired / sub inactive
 ):
     """
     AI-generated cost optimization recommendations from real spend data.

@@ -36,6 +36,14 @@ class Settings(BaseSettings):
     RAZORPAY_CLIENT_ID: str = ""  # Partner OAuth
     RAZORPAY_CLIENT_SECRET: str = ""
 
+    # Razorpay Subscription Plan IDs (create these in Razorpay Dashboard → Products → Plans)
+    RAZORPAY_PLAN_ID_STARTER: str = ""   # e.g. plan_xxxx
+    RAZORPAY_PLAN_ID_PRO: str = ""        # e.g. plan_yyyy
+    RAZORPAY_PLAN_ID_ENTERPRISE: str = "" # e.g. plan_zzzz
+
+    # Frontend base URL for redirects after payment
+    APP_BASE_URL: str = "http://localhost:3000"
+
     # Platform commission charged on top of invoice amount (e.g. 2.0 = 2%)
     PLATFORM_COMMISSION_PERCENT: float = 0.0
 

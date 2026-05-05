@@ -5,19 +5,21 @@ import { motion } from "framer-motion";
 import {
   Settings as SettingsIcon, Shield, Building, Bell,
   LogOut, Save, Loader2, CheckCircle2, User, Mail,
-  Globe, Calendar, DollarSign,
+  Globe, Calendar, DollarSign, CreditCard,
 } from "lucide-react";
 import toast from "react-hot-toast";
+import BillingTab from "@/components/BillingTab";
 
 const cv = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.06 } } };
 const iv = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition: { duration: 0.35 } } };
 
-type Tab = "profile" | "organisation" | "notifications";
+type Tab = "profile" | "organisation" | "notifications" | "billing";
 
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "profile", label: "Profile & Security", icon: Shield },
   { id: "organisation", label: "Organisation", icon: Building },
   { id: "notifications", label: "Notifications", icon: Bell },
+  { id: "billing", label: "Billing & Usage", icon: CreditCard },
 ];
 
 /* ── Profile Tab ─────────────────────────────────────────────────────────── */
@@ -187,44 +189,30 @@ function OrganisationTab() {
 /* ── Notifications Tab ───────────────────────────────────────────────────── */
 
 function NotificationsTab() {
-  const [settings, setSettings] = useState({
-    approvalRequired: true,
-    anomalyDetected: true,
-    workflowFailed: true,
-    invoiceUploaded: false,
-    weeklyDigest: true,
-  });
-
-  const labels: Record<string, string> = {
-    approvalRequired: "Approval required",
-    anomalyDetected: "Anomaly detected",
-    workflowFailed: "Workflow failed",
-    invoiceUploaded: "Invoice uploaded",
-    weeklyDigest: "Weekly digest email",
-  };
-
   return (
-    <div className="p-6 space-y-3">
-      <p className="text-xs font-semibold mb-4" style={{ color: "var(--color-text-muted)" }}>Email notifications</p>
-      {Object.entries(settings).map(([key, enabled]) => (
-        <div key={key} className="flex items-center justify-between p-3 rounded-xl" style={{ background: "var(--color-bg-elevated)", border: "1px solid var(--color-border)" }}>
-          <span className="text-sm text-white">{labels[key]}</span>
-          <button
-            id={`notif-${key}`}
-            onClick={() => setSettings(s => ({ ...s, [key]: !s[key as keyof typeof s] }))}
-            className="w-10 h-5 rounded-full relative transition-all"
-            style={{ background: enabled ? "#3b82f6" : "rgba(255,255,255,0.1)" }}
-          >
-            <span
-              className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all"
-              style={{ left: enabled ? "calc(100% - 18px)" : "2px" }}
-            />
-          </button>
-        </div>
-      ))}
-      <p className="text-xs pt-2" style={{ color: "var(--color-text-muted)" }}>
-        Notification preferences are stored locally. Email delivery coming soon.
-      </p>
+    <div className="p-6 space-y-4">
+      <div
+        className="p-4 rounded-xl space-y-2"
+        style={{ background: "rgba(59,130,246,0.06)", border: "1px solid rgba(59,130,246,0.15)" }}
+      >
+        <p className="text-sm font-semibold text-white flex items-center gap-2">
+          <Bell size={14} className="text-blue-400" />
+          In-App Notifications
+        </p>
+        <p className="text-xs" style={{ color: "var(--color-text-secondary)" }}>
+          Risk alerts, approval requests, and workflow events are delivered via the bell icon in the top bar. They are fetched in real time from your organization&apos;s activity feed.
+        </p>
+      </div>
+
+      <div
+        className="p-4 rounded-xl space-y-2"
+        style={{ background: "rgba(100,116,139,0.06)", border: "1px solid rgba(100,116,139,0.15)" }}
+      >
+        <p className="text-sm font-semibold text-white">Email Notifications</p>
+        <p className="text-xs" style={{ color: "var(--color-text-secondary)" }}>
+          Email notification delivery is not yet implemented. All critical alerts are available in-app.
+        </p>
+      </div>
     </div>
   );
 }
@@ -268,6 +256,7 @@ export default function SettingsPage() {
             {activeTab === "profile" && <ProfileTab />}
             {activeTab === "organisation" && <OrganisationTab />}
             {activeTab === "notifications" && <NotificationsTab />}
+            {activeTab === "billing" && <BillingTab />}
           </div>
         </motion.div>
       </div>

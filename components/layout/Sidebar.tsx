@@ -20,6 +20,7 @@ const NAV_ITEMS = [
   { href: "/payments", icon: CreditCard, label: "Payments", group: "ops" },
   { href: "/treasury", icon: Landmark, label: "Treasury", group: "ops" },
   { href: "/analytics", icon: BarChart3, label: "Analytics", group: "ops" },
+  { href: "/pricing", icon: Zap, label: "Upgrade Plan", group: "config" },
   { href: "/settings", icon: Settings, label: "Settings", group: "config" },
 ];
 
@@ -94,18 +95,21 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
         ))}
       </nav>
 
-      {/* Agent Status */}
+      {/* Plan status link */}
       {!collapsed && (
-        <div className="flex-shrink-0 px-3 py-3 mx-3 mb-3 rounded-xl" style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.15)" }}>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-emerald flex-shrink-0" />
-            <span className="text-xs font-bold truncate" style={{ color: "#10b981" }}>8 Agents Active</span>
+        <Link
+          href="/settings?tab=billing"
+          className="flex-shrink-0 px-3 py-3 mx-3 mb-3 rounded-xl transition-all hover:opacity-80"
+          style={{ background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.15)" }}
+        >
+          <div className="flex items-center gap-2">
+            <Zap size={10} style={{ color: "#a78bfa" }} className="flex-shrink-0" />
+            <span className="text-xs font-bold truncate" style={{ color: "#a78bfa" }}>Billing & Usage</span>
           </div>
-          <div className="flex items-center gap-1.5">
-            <Zap size={9} style={{ color: "var(--color-text-muted)" }} className="flex-shrink-0" />
-            <span className="text-xs truncate" style={{ color: "var(--color-text-muted)" }}>All systems operational</span>
+          <div className="text-xs mt-0.5 truncate" style={{ color: "var(--color-text-muted)" }}>
+            View plan & limits
           </div>
-        </div>
+        </Link>
       )}
 
       {/* Collapse Toggle */}

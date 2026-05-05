@@ -85,6 +85,8 @@ PUBLIC_PREFIXES = (
     "/api/v1/payments/webhook/",
     "/api/v1/payments/razorpay-webhook",
     "/api/v1/payments/stripe-webhook",
+    # Razorpay subscription lifecycle webhooks
+    "/api/v1/subscriptions/webhook",
 )
 
 

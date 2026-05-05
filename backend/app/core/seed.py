@@ -5,8 +5,9 @@ Also indexes vendors and invoices into Qdrant vector store on first run.
 from datetime import datetime, timedelta
 import random
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from app.core.database import AsyncSessionLocal
-from app.models.models import Organization, Vendor, Invoice, Expense, Approval, Workflow
+from app.models.models import Organization, Vendor, Invoice, Expense, Approval, Workflow, SubscriptionPlan, OrganizationSubscription, SubscriptionStatus
 from loguru import logger
 
 
@@ -45,6 +46,9 @@ CURRENCIES = ["USD", "USD", "USD", "USD", "INR", "EUR", "GBP"]
 
 async def seed_demo_data():
     """Seed the database with realistic demo data, then index into Qdrant."""
+    # Always upsert subscription plans first (idempotent)
+    await seed_subscription_plans()
+
     async with AsyncSessionLocal() as db:
         # Check if already seeded for this org
         result = await db.execute(select(Vendor).where(Vendor.org_id == "cc95cadf-ba95-474f-929e-b77f8b0b934c").limit(1))
@@ -253,3 +257,88 @@ async def _index_vendors_into_qdrant():
         logger.info(f"✅ {len(vendors)} vendors indexed in Qdrant")
     except Exception as e:
         logger.warning(f"Qdrant vendor indexing failed (non-critical): {e}")
+
+
+# ── Subscription Plan Seeding ────────────────────────────────────────────────
+
+PLAN_CATALOG = [
+    {
+        "slug": "free",
+        "name": "Free",
+        "description": "30-day trial — 5 invoices & 10 AI prompts.",
+        "price_monthly_inr": 0,
+        "max_invoices_per_month": 5,   # lifetime cap for free (no monthly reset)
+        "max_prompts_per_month": 10,   # lifetime cap for free (no monthly reset)
+        "sort_order": 0,
+    },
+    {
+        "slug": "starter",
+        "name": "Starter",
+        "description": "For small teams managing their finances.",
+        "price_monthly_inr": 999,
+        "max_invoices_per_month": 100,
+        "max_prompts_per_month": 500,
+        "sort_order": 1,
+    },
+    {
+        "slug": "pro",
+        "name": "Pro",
+        "description": "For growing businesses with high invoice volume.",
+        "price_monthly_inr": 2999,
+        "max_invoices_per_month": 1000,
+        "max_prompts_per_month": 5000,
+        "sort_order": 2,
+    },
+    {
+        "slug": "enterprise",
+        "name": "Enterprise",
+        "description": "Unlimited everything for large organisations.",
+        "price_monthly_inr": 7999,
+        "max_invoices_per_month": -1,    # unlimited
+        "max_prompts_per_month": -1,     # unlimited
+        "sort_order": 3,
+    },
+]
+
+
+async def seed_subscription_plans():
+    """Upsert all subscription plans — idempotent, runs on every startup."""
+    async with AsyncSessionLocal() as db:
+        for plan_data in PLAN_CATALOG:
+            existing = await db.execute(
+                select(SubscriptionPlan).where(SubscriptionPlan.slug == plan_data["slug"]).limit(1)
+            )
+            plan = existing.scalar_one_or_none()
+
+            if plan:
+                # Update mutable fields in case they changed in code
+                plan.name = plan_data["name"]
+                plan.description = plan_data["description"]
+                plan.price_monthly_inr = plan_data["price_monthly_inr"]
+                plan.max_invoices_per_month = plan_data["max_invoices_per_month"]
+                plan.max_prompts_per_month = plan_data["max_prompts_per_month"]
+                plan.sort_order = plan_data["sort_order"]
+                plan.updated_at = datetime.utcnow()
+            else:
+                plan = SubscriptionPlan(
+                    slug=plan_data["slug"],
+                    name=plan_data["name"],
+                    description=plan_data["description"],
+                    price_monthly_inr=plan_data["price_monthly_inr"],
+                    max_invoices_per_month=plan_data["max_invoices_per_month"],
+                    max_prompts_per_month=plan_data["max_prompts_per_month"],
+                    sort_order=plan_data["sort_order"],
+                    is_active=True,
+                )
+                db.add(plan)
+
+        await db.commit()
+
+        # Bust Redis plan cache so updated prices are served immediately
+        try:
+            from app.core.redis_client import cache
+            await cache.invalidate_pattern("subscriptions")
+        except Exception:
+            pass  # Redis may not be up yet at startup; that's fine
+
+        logger.info("✅ Subscription plans seeded (4 tiers: Free ₹0 / Starter ₹999 / Pro ₹2,999 / Enterprise ₹7,999)")

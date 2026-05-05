@@ -30,6 +30,7 @@ from loguru import logger
 
 from app.core.database import get_db
 from app.core.memory import memory_service
+from app.core.subscription import require_prompt_quota, increment_prompt_usage
 from app.api.deps import get_org_id, get_user_id, get_user_email
 
 router = APIRouter()
@@ -307,6 +308,7 @@ async def send_message(
     body: SendMessageRequest,
     org_id: str = Depends(get_org_id),
     db: AsyncSession = Depends(get_db),
+    _sub: dict = Depends(require_prompt_quota),   # 402 if prompt limit hit
 ):
     """
     Send a user message → run LangGraph supervisor → persist both turns
@@ -441,6 +443,9 @@ async def send_message(
         duration_ms=duration_ms,
     )
 
+    # ── 7. Increment prompt usage counter ───────────────────────────────────
+    await increment_prompt_usage(org_id, db)
+
     logger.info(
         f"WorkspaceChat: chat={chat_id} session={session_id} "
         f"intent={intent} agent={agent_name} tools={len(tool_calls)} "
@@ -471,6 +476,7 @@ async def send_message_stream(
     body: SendMessageRequest,
     org_id: str = Depends(get_org_id),
     db: AsyncSession = Depends(get_db),
+    _sub: dict = Depends(require_prompt_quota),   # 402 if prompt limit hit
 ):
     """
     SSE streaming variant of send_message.
@@ -523,6 +529,10 @@ async def send_message_stream(
     )
     db.add(user_msg)
     await db.commit()
+
+    # Increment prompt counter before the generator starts
+    # (we can't safely use db inside the async generator)
+    await increment_prompt_usage(org_id, db)
 
     # Accumulated state (built from SSE events during streaming)
     acc: dict = {

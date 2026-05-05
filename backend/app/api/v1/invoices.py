@@ -14,6 +14,7 @@ from app.core.database import get_db
 from app.core.config import settings
 from app.core.redis_client import cache, TTL_DASHBOARD
 from app.core.vector_store import vector_store
+from app.core.subscription import require_invoice_quota, increment_invoice_usage
 from app.models.models import Invoice, Vendor, Approval, AuditLog, Organization
 from app.agents.invoice_agent import invoice_agent
 from app.agents.compliance_agent import compliance_agent
@@ -242,6 +243,7 @@ async def upload_invoice(
     currency: str = Form("USD"),
     org_id: str = Depends(get_org_id),
     db: AsyncSession = Depends(get_db),
+    _sub: dict = Depends(require_invoice_quota),  # 402 if limit hit
 ):
     """Upload and enqueue invoice for the AI processing pipeline."""
     file_ext = os.path.splitext(file.filename or "invoice.pdf")[1]
@@ -265,6 +267,9 @@ async def upload_invoice(
     await db.flush()
     invoice_id = invoice.id
     await db.commit()
+
+    # Increment usage counter
+    await increment_invoice_usage(org_id, db)
 
     background_tasks.add_task(
         process_invoice_background,
