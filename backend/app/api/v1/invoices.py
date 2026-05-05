@@ -144,59 +144,22 @@ async def process_invoice_background(invoice_id: str, file_path: str, content_ty
                 )
                 logger.info(f"Invoice {invoice_id[:8]}: indexed in Qdrant (indexed={indexed})")
 
-            # ── Step 4: Semantic vendor matching via Qdrant ──────────────────
+            # ── Step 4: Vendor matching / creation via dedup utility ──────────
             if extracted.get("vendor_name"):
-                vendor_embed_text = f"{extracted['vendor_name']} {extracted.get('description', '')}"
-                vendor_embedding = await model_router.embed(vendor_embed_text)
-
-                similar_vendors = await vector_store.find_similar_vendors(
-                    embedding=vendor_embedding,
+                from app.core.vendor_utils import find_or_create_vendor
+                vendor, created = await find_or_create_vendor(
+                    db=db,
                     org_id=org_id,
-                    threshold=0.88,
-                    limit=1,
+                    name=extracted["vendor_name"],
+                    email=extracted.get("vendor_email"),
+                    semantic_threshold=0.88,
                 )
-
-                if similar_vendors:
-                    # Matched existing vendor semantically
-                    vendor = await db.get(Vendor, similar_vendors[0]["vendor_id"])
-                    if vendor:
-                        invoice.vendor_id = vendor.id
-                        logger.info(f"Vendor matched via Qdrant: {vendor.name} (score={similar_vendors[0]['score']:.3f})")
-                else:
-                    # New vendor — create + index in Qdrant
-                    result = await db.execute(
-                        select(Vendor).where(
-                            Vendor.org_id == org_id,
-                            Vendor.name.ilike(f"%{extracted['vendor_name'][:50]}%"),
-                        ).limit(1)
-                    )
-                    vendor = result.scalar_one_or_none()
-                    if not vendor:
-                        vendor = Vendor(
-                            org_id=org_id,
-                            name=extracted["vendor_name"],
-                            email=extracted.get("vendor_email"),
-                            risk_score=20.0,
-                            risk_level="low",
-                        )
-                        db.add(vendor)
-                        await db.flush()
-
-                    invoice.vendor_id = vendor.id
-
-                    # Index new vendor in Qdrant
-                    await vector_store.upsert_vendor(
-                        vendor_id=str(vendor.id),
-                        embedding=vendor_embedding,
-                        payload={
-                            "org_id": org_id,
-                            "name": vendor.name,
-                            "category": getattr(vendor, "category", ""),
-                            "risk_level": vendor.risk_level,
-                            "risk_score": float(vendor.risk_score or 0),
-                            "is_verified": bool(getattr(vendor, "is_verified", False)),
-                        },
-                    )
+                invoice.vendor_id = vendor.id
+                # Bust the vendor list cache so the new vendor appears immediately
+                # on the Vendors page (TTL_VENDOR_LIST is 5 min without this).
+                await cache.invalidate_pattern("vendors")
+                if created:
+                    logger.info(f"New vendor '{vendor.name}' created and vendor cache invalidated.")
 
             # ── Step 5: Risk analysis (GPT-4o via compliance model) ──────────
             vendor_history = {}
@@ -342,13 +305,22 @@ async def list_invoices(
 
     result = await db.execute(q)
     invoices = result.scalars().all()
+    
+    # Fetch vendors in bulk for bank details
+    vendor_ids = [inv.vendor_id for inv in invoices if inv.vendor_id]
+    vendor_map: dict = {}
+    if vendor_ids:
+        vq = select(Vendor).where(Vendor.id.in_(vendor_ids))
+        vendor_results = await db.execute(vq)
+        for v in vendor_results.scalars().all():
+            vendor_map[v.id] = v
 
     # Total count
     count_q = select(func.count(Invoice.id)).where(Invoice.org_id == org_id)
     total = (await db.execute(count_q)).scalar_one_or_none() or 0
 
     response = {
-        "invoices": [_invoice_to_dict(inv) for inv in invoices],
+        "invoices": [_invoice_to_dict(inv, vendor_map.get(inv.vendor_id)) for inv in invoices],
         "total": total,
     }
     await cache.set("invoices", response, 30, cache_key)
@@ -390,7 +362,8 @@ async def get_invoice(invoice_id: str, db: AsyncSession = Depends(get_db)):
     invoice = await db.get(Invoice, invoice_id)
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
-    return _invoice_to_dict(invoice)
+    vendor = await db.get(Vendor, invoice.vendor_id) if invoice.vendor_id else None
+    return _invoice_to_dict(invoice, vendor)
 
 
 @router.patch("/{invoice_id}")
@@ -405,7 +378,8 @@ async def update_invoice(invoice_id: str, update: InvoiceUpdate, db: AsyncSessio
     await db.commit()
     await cache.invalidate_pattern("invoices")
     await cache.invalidate_pattern("dashboard")
-    return _invoice_to_dict(invoice)
+    vendor = await db.get(Vendor, invoice.vendor_id) if invoice.vendor_id else None
+    return _invoice_to_dict(invoice, vendor)
 
 
 @router.post("/{invoice_id}/analyze")
@@ -424,7 +398,8 @@ async def analyze_invoice(invoice_id: str, db: AsyncSession = Depends(get_db)):
     return {"risk": risk, "invoice_id": invoice_id}
 
 
-def _invoice_to_dict(inv: Invoice) -> dict:
+def _invoice_to_dict(inv: Invoice, vendor: "Vendor | None" = None) -> dict:
+    vendor_meta = vendor.extra_metadata or {} if vendor else {}
     return {
         "id": inv.id,
         "invoice_number": inv.invoice_number,
@@ -445,4 +420,11 @@ def _invoice_to_dict(inv: Invoice) -> dict:
         "policy_violations": inv.policy_violations,
         "created_at": inv.created_at.isoformat(),
         "vendor_id": inv.vendor_id,
+        "vendor_name": vendor.name if vendor else None,
+        # Pre-fill bank details for the approval modal
+        "vendor_bank": {
+            "account_name": vendor_meta.get("bank_account_name"),
+            "account_number": vendor_meta.get("bank_account_number"),
+            "ifsc_code": vendor_meta.get("bank_ifsc_code"),
+        } if vendor else None,
     }

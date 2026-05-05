@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from app.core.database import get_db
 from app.core.redis_client import cache
 from app.models.models import Approval, Invoice
-from app.api.deps import get_org_id
+from app.api.deps import get_org_id, get_user_email
 from app.agents.approval_agent import approval_agent
 
 router = APIRouter()
@@ -18,6 +18,9 @@ class ApprovalDecision(BaseModel):
     decision: str  # approve | reject | escalate
     notes: Optional[str] = None
     decision_by: str = "user@example.com"
+    account_name: Optional[str] = None
+    account_number: Optional[str] = None
+    ifsc_code: Optional[str] = None
 
 
 @router.get("/")
@@ -41,6 +44,27 @@ async def list_approvals(
     result = await db.execute(q)
     approvals = result.scalars().all()
 
+    # Bulk-fetch vendors for bank details pre-fill
+    from app.models.models import Vendor
+    invoice_ids = [a.invoice_id for a in approvals if a.invoice_id]
+    vendor_map: dict = {}
+    if invoice_ids:
+        inv_result = await db.execute(select(Invoice).where(Invoice.id.in_(invoice_ids)))
+        invoices = {inv.id: inv for inv in inv_result.scalars().all()}
+        vendor_ids = list({inv.vendor_id for inv in invoices.values() if inv.vendor_id})
+        if vendor_ids:
+            v_result = await db.execute(select(Vendor).where(Vendor.id.in_(vendor_ids)))
+            vendor_map = {v.id: v for v in v_result.scalars().all()}
+        # Map approval invoice_id -> vendor
+        approval_vendor_map = {
+            a.invoice_id: vendor_map.get(invoices[a.invoice_id].vendor_id)
+            for a in approvals
+            if a.invoice_id and a.invoice_id in invoices and invoices[a.invoice_id].vendor_id
+        }
+    else:
+        invoices = {}
+        approval_vendor_map = {}
+
     total_q = select(func.count(Approval.id)).where(Approval.org_id == org_id)
     total = (await db.execute(total_q)).scalar_one_or_none() or 0
 
@@ -52,7 +76,7 @@ async def list_approvals(
     counts = {r.status: r.cnt for r in counts_result.all()}
 
     response = {
-        "approvals": [_approval_to_dict(a) for a in approvals],
+        "approvals": [_approval_to_dict(a, approval_vendor_map.get(a.invoice_id)) for a in approvals],
         "total": total,
         "counts": counts,
     }
@@ -69,9 +93,22 @@ async def get_approval(approval_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/{approval_id}/approve")
-async def approve(approval_id: str, db: AsyncSession = Depends(get_db)):
-    """Quick approve endpoint (no body required)."""
-    return await _decide(approval_id, "approved", db)
+async def approve(
+    approval_id: str, 
+    payload: Optional[ApprovalDecision] = None,
+    user_email: str = Depends(get_user_email),
+    db: AsyncSession = Depends(get_db)
+):
+    """Approve endpoint, optionally accepting vendor bank details."""
+    return await _decide(
+        approval_id, 
+        "approved", 
+        db,
+        user_email=user_email,
+        account_name=payload.account_name if payload else None,
+        account_number=payload.account_number if payload else None,
+        ifsc_code=payload.ifsc_code if payload else None
+    )
 
 
 @router.post("/{approval_id}/reject")
@@ -95,6 +132,10 @@ async def _decide(
     db: AsyncSession,
     notes: Optional[str] = None,
     decision_by: str = "system",
+    user_email: Optional[str] = None,
+    account_name: Optional[str] = None,
+    account_number: Optional[str] = None,
+    ifsc_code: Optional[str] = None,
 ):
     approval = await db.get(Approval, approval_id)
     if not approval:
@@ -134,7 +175,7 @@ async def _decide(
 
         invoice = await db.get(Invoice, approval.invoice_id)
         if invoice:
-            invoice.status = "approved" if decision == "approve" else "rejected"
+            invoice.status = "approved" if decision == "approved" else "rejected"
             invoice.updated_at = datetime.utcnow()
             invoice_data = {
                 "org_id": invoice.org_id,
@@ -144,29 +185,50 @@ async def _decide(
                 "risk_level": invoice.risk_level or "low",
                 "risk_score": float(invoice.risk_score or 0),
             }
+            
+            # If bank details provided, save them to the Vendor
+            if account_number and ifsc_code and invoice.vendor_id:
+                from app.models.models import Vendor
+                vendor = await db.get(Vendor, invoice.vendor_id)
+                if vendor:
+                    em = dict(vendor.extra_metadata or {})
+                    em["bank_account_number"] = account_number
+                    em["bank_ifsc_code"] = ifsc_code
+                    em["bank_account_name"] = account_name
+                    em["payment_rail"] = "razorpay_link" # force this rail
+                    vendor.extra_metadata = em
+            
+            # Save the admin email so Temporal can send the payment link email
+            if user_email:
+                inv_meta = dict(invoice.extra_metadata or {})
+                inv_meta["admin_email"] = user_email
+                invoice.extra_metadata = inv_meta
+
+            # ── COMMIT FIRST so bank details are visible to the payment activity ──
+            await db.commit()
+            await cache.invalidate_pattern("approvals")
+            await cache.invalidate_pattern("dashboard")
+            await cache.invalidate_pattern("invoices")
 
             try:
                 if temporal_manager.client:
                     handle = temporal_manager.client.get_workflow_handle(
                         f"invoice-workflow-{approval.invoice_id}"
                     )
-                    if decision == "approve":
+                    if decision == "approved":
                         await handle.signal("approve_invoice")
-                    elif decision == "reject":
+                    elif decision == "rejected":
                         await handle.signal("reject_invoice")
             except Exception:
                 pass  # Temporal is optional
 
-    await db.commit()
-    await cache.invalidate_pattern("approvals")
-    await cache.invalidate_pattern("dashboard")
-    await cache.invalidate_pattern("invoices")
+
 
     # ── Clear Redis workflow state + reset retry counter on completion ────────
     if approval.invoice_id:
         workflow_id = f"invoice-workflow-{approval.invoice_id}"
         await cache.clear_workflow_state(workflow_id)
-        if decision == "approve":
+        if decision == "approved":
             await cache.reset_retry_count(workflow_id)
 
     # ── Index workflow outcome in Qdrant (background, non-blocking) ───────────
@@ -260,7 +322,8 @@ async def pending_count(
     return {"pending_count": result.scalar_one_or_none() or 0}
 
 
-def _approval_to_dict(a: Approval) -> dict:
+def _approval_to_dict(a: Approval, vendor: "Vendor | None" = None) -> dict:
+    vendor_meta = vendor.extra_metadata or {} if vendor else {}
     return {
         "id": a.id,
         "invoice_id": a.invoice_id,
@@ -279,4 +342,10 @@ def _approval_to_dict(a: Approval) -> dict:
         "policy_checks": a.policy_checks or [],
         "expires_at": a.expires_at.isoformat() if a.expires_at else None,
         "created_at": a.created_at.isoformat(),
+        "vendor_name": vendor.name if vendor else None,
+        "vendor_bank": {
+            "account_name": vendor_meta.get("bank_account_name"),
+            "account_number": vendor_meta.get("bank_account_number"),
+            "ifsc_code": vendor_meta.get("bank_ifsc_code"),
+        } if vendor else None,
     }

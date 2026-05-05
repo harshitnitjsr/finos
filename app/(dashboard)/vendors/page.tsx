@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Building2, Shield, Search, Plus, X, AlertTriangle,
-  CheckCircle2, TrendingUp, InboxIcon, ChevronRight, Loader2, Heart,
+  CheckCircle2, TrendingUp, InboxIcon, ChevronRight, Loader2, Heart, CreditCard,
 } from "lucide-react";
 import PageContextHelp from "@/components/global/PageContextHelp";
 import { apiFetch } from "@/lib/api";
@@ -15,12 +15,14 @@ const iv = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0, transition
 interface Vendor {
   id: string; name: string; email?: string; category?: string; website?: string;
   risk_level: string; risk_score: number; is_verified: boolean; is_active: boolean;
-  total_paid: number; payment_currency: string; created_at: string;
+  total_paid: number; total_paid_display?: number; total_paid_currency?: string;
+  payment_currency: string; created_at: string;
 }
 interface VendorDetail extends Vendor {
   invoice_stats: { currency: string; count: number; total: number }[];
   vendor_health?: Record<string, unknown>;
   health_analysis?: Record<string, unknown>;
+  bank_details?: { account_name?: string; account_number?: string; ifsc_code?: string } | null;
 }
 interface VendorsResp { vendors: Vendor[]; total: number; base_currency?: string; }
 interface SemanticMatch { id: string; score: number; name?: string; category?: string; risk_level?: string; }
@@ -39,7 +41,7 @@ function useVendors(params: { category?: string; risk_level?: string }) {
   return useQuery<VendorsResp>({
     queryKey: ["vendors", params],
     queryFn: () => apiFetch<VendorsResp>(`/vendors/?${sp}`),
-    refetchInterval: 30000,
+    refetchInterval: 8000,   // Poll every 8s — new vendors from invoice uploads appear quickly
   });
 }
 function useVendorDetail(id: string | null, healthCheck: boolean) {
@@ -72,9 +74,19 @@ export default function VendorsPage() {
     if (baseCurrency) setCreateForm(prev => ({ ...prev, payment_currency: baseCurrency }));
   }, [baseCurrency]);
 
+  const [createMsg, setCreateMsg] = useState<string | null>(null);
+
   const createMutation = useMutation({
-    mutationFn: (body: typeof createForm) => apiFetch("/vendors/", { method: "POST", body: JSON.stringify(body) }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["vendors"] }); setShowCreate(false); setCreateForm({ name: "", email: "", category: "", payment_currency: "USD" }); },
+    mutationFn: (body: typeof createForm) => apiFetch<Record<string, unknown>>("/vendors/", { method: "POST", body: JSON.stringify(body) }),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["vendors"] });
+      setShowCreate(false);
+      setCreateForm({ name: "", email: "", category: "", payment_currency: "USD" });
+      if (data._existing) {
+        setCreateMsg(data._message as string || "Vendor already exists — existing record shown.");
+        setTimeout(() => setCreateMsg(null), 5000);
+      }
+    },
   });
 
   const handleSemanticSearch = async () => {
@@ -91,6 +103,14 @@ export default function VendorsPage() {
 
   return (
     <motion.div variants={cv} initial="hidden" animate="show" className="space-y-6">
+      {/* Duplicate vendor toast */}
+      {createMsg && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-amber-300"
+          style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)" }}>
+          <AlertTriangle size={14} className="shrink-0" />
+          {createMsg}
+        </div>
+      )}
       {/* Header */}
       <motion.div variants={iv} className="flex items-center justify-between">
         <div>
@@ -201,7 +221,12 @@ export default function VendorsPage() {
                   <div className="p-2 rounded-lg text-center" style={{ background: "var(--color-bg-elevated)" }}>
                     <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>Total Paid</p>
                     <p className="text-sm font-bold text-white">
-                      {currencySymbol}{(vendor.total_paid / 1000).toFixed(0)}K
+                      {(() => {
+                        const amt = vendor.total_paid;
+                        if (amt >= 1_000_000) return `${currencySymbol}${(amt / 1_000_000).toFixed(1)}M`;
+                        if (amt >= 1000) return `${currencySymbol}${(amt / 1000).toFixed(1)}K`;
+                        return `${currencySymbol}${amt.toFixed(0)}`;
+                      })()}
                     </p>
                   </div>
                   <div className="p-2 rounded-lg text-center" style={{ background: "var(--color-bg-elevated)" }}>
@@ -284,6 +309,35 @@ export default function VendorsPage() {
                         {healthCheck ? "Loaded" : "Run Analysis"}
                       </button>
                     </div>
+
+                    {/* Bank Details — saved from approval modal */}
+                    <div>
+                      <p className="text-xs font-semibold text-slate-400 mb-2 flex items-center gap-1">
+                        <CreditCard size={12} /> Bank Account
+                      </p>
+                      {detail.bank_details ? (
+                        <div className="p-3 rounded-xl space-y-2" style={{ background: "rgba(16,185,129,0.06)", border: "1px solid rgba(16,185,129,0.2)" }}>
+                          {[
+                            { label: "Account Name", value: detail.bank_details.account_name },
+                            { label: "Account Number", value: detail.bank_details.account_number ? `••••${detail.bank_details.account_number.slice(-4)}` : null },
+                            { label: "IFSC Code", value: detail.bank_details.ifsc_code },
+                          ].map(({ label, value }) => value ? (
+                            <div key={label} className="flex justify-between text-xs">
+                              <span style={{ color: "var(--color-text-muted)" }}>{label}</span>
+                              <span className="text-white font-medium">{value}</span>
+                            </div>
+                          ) : null)}
+                        </div>
+                      ) : (
+                        <div className="p-3 rounded-xl text-xs" style={{ background: "var(--color-bg-elevated)", border: "1px solid var(--color-border)", color: "var(--color-text-muted)" }}>
+                          No bank details saved. Approve an invoice for this vendor to add them.
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Payment Routing */}
+                    <VendorPaymentRouting vendorId={detail.id} />
+
 
                     {/* Vendor Health */}
                     {healthCheck && detail.vendor_health && (
@@ -369,5 +423,95 @@ export default function VendorsPage() {
         )}
       </AnimatePresence>
     </motion.div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Vendor Payment Routing Component
+// ─────────────────────────────────────────────────────────────────────────────
+function VendorPaymentRouting({ vendorId }: { vendorId: string }) {
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery<{ details: any[] }>({
+    queryKey: ["vendor_payment_details", vendorId],
+    queryFn: () => apiFetch(`/payments/vendors/${vendorId}/details`)
+  });
+
+  const [adding, setAdding] = useState(false);
+  const [method, setMethod] = useState("upi");
+  const [details, setDetails] = useState<Record<string, string>>({});
+
+  const mut = useMutation({
+    mutationFn: () => apiFetch(`/payments/vendors/${vendorId}/details`, {
+      method: "POST",
+      body: JSON.stringify({ method, details, is_primary: true })
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["vendor_payment_details", vendorId] });
+      setAdding(false);
+      setDetails({});
+    }
+  });
+
+  const del = useMutation({
+    mutationFn: (id: string) => apiFetch(`/payments/vendors/${vendorId}/details/${id}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["vendor_payment_details", vendorId] })
+  });
+
+  const routing = data?.details || [];
+
+  return (
+    <div className="p-4 rounded-xl border border-white/10" style={{ background: "var(--color-bg-elevated)" }}>
+      <div className="flex items-center justify-between mb-3">
+        <h4 className="text-sm font-bold text-white flex items-center gap-2"><Building2 size={14} className="text-blue-400"/> Payment Routing</h4>
+        <button onClick={() => setAdding(!adding)} className="text-xs font-semibold text-blue-400 hover:text-blue-300">
+          {adding ? "Cancel" : "+ Add Detail"}
+        </button>
+      </div>
+
+      {adding && (
+        <div className="mb-4 p-3 rounded-lg bg-black/20 border border-white/5 space-y-3">
+          <select value={method} onChange={e => { setMethod(e.target.value); setDetails({}); }} className="w-full text-xs p-2 rounded-lg bg-black/40 text-white border border-white/10">
+            <option value="upi">UPI ID</option>
+            <option value="bank">Bank Account</option>
+            <option value="stripe_account">Stripe Connect Account</option>
+          </select>
+          
+          {method === "upi" && <input placeholder="vendor@upi" onChange={e => setDetails({ upi_id: e.target.value })} className="w-full text-xs p-2 rounded-lg bg-black/40 text-white border border-white/10" />}
+          {method === "bank" && (
+            <>
+              <input placeholder="Account Name" onChange={e => setDetails({ ...details, account_name: e.target.value })} className="w-full text-xs p-2 rounded-lg bg-black/40 text-white border border-white/10" />
+              <input placeholder="Account Number" onChange={e => setDetails({ ...details, account_number: e.target.value })} className="w-full text-xs p-2 rounded-lg bg-black/40 text-white border border-white/10" />
+              <input placeholder="IFSC Code" onChange={e => setDetails({ ...details, ifsc: e.target.value })} className="w-full text-xs p-2 rounded-lg bg-black/40 text-white border border-white/10" />
+            </>
+          )}
+          {method === "stripe_account" && <input placeholder="acct_123..." onChange={e => setDetails({ stripe_account_id: e.target.value })} className="w-full text-xs p-2 rounded-lg bg-black/40 text-white border border-white/10" />}
+          
+          <button onClick={() => mut.mutate()} disabled={mut.isPending} className="w-full py-2 bg-blue-500/20 text-blue-400 text-xs font-bold rounded-lg border border-blue-500/30 hover:bg-blue-500/30">
+            Save Routing Detail
+          </button>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        {isLoading ? <div className="shimmer h-12 rounded-lg" /> : routing.length === 0 ? (
+          <p className="text-xs text-slate-500">No payment details set. Vendor cannot be paid via Orchestrator.</p>
+        ) : routing.map(r => (
+          <div key={r.id} className="flex items-center justify-between p-2.5 rounded-lg bg-black/20 border border-white/5">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-300 uppercase">{r.method.replace("_", " ")}</span>
+                {r.is_primary && <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-500/20 text-blue-400">PRIMARY</span>}
+              </div>
+              <div className="text-[11px] text-slate-500 font-mono mt-0.5">
+                {r.method === "upi" ? r.details.upi_id : 
+                 r.method === "bank" ? `${r.details.account_number} (${r.details.ifsc})` : 
+                 r.details.stripe_account_id}
+              </div>
+            </div>
+            <button onClick={() => del.mutate(r.id)} className="text-slate-500 hover:text-rose-400"><X size={14}/></button>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

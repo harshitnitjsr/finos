@@ -63,6 +63,22 @@ class WorkflowStatus(str, enum.Enum):
     COMPENSATING = "compensating"
 
 
+class PaymentSourceType(str, enum.Enum):
+    STRIPE = "stripe"
+    RAZORPAY = "razorpay"
+    UPI = "upi"
+    BANK = "bank"
+    CARD = "card"
+
+
+class PaymentStatus(str, enum.Enum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    REFUNDED = "refunded"
+
+
 class RiskLevel(str, enum.Enum):
     LOW = "low"
     MEDIUM = "medium"
@@ -148,6 +164,7 @@ class Invoice(Base):
     # Notes
     description: Mapped[str] = mapped_column(Text, nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=True)
+    extra_metadata: Mapped[dict] = mapped_column(JSON, default=dict, nullable=True)
     
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -487,4 +504,142 @@ class WorkspaceChatMessage(Base):
         Index("ix_workspace_messages_chat_id", "chat_id"),
         Index("ix_workspace_messages_org_id", "org_id"),
         Index("ix_workspace_messages_created_at", "created_at"),
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Payment Orchestration Models
+# ─────────────────────────────────────────────────────────────────────────────
+
+class PaymentSource(Base):
+    """
+    A connected payment source for an organisation.
+    Stores tokenized credentials — never raw secrets.
+    Tech users connect existing Stripe/Razorpay accounts.
+    Non-tech users add UPI / bank / card which is routed via RazorpayX.
+    """
+    __tablename__ = "payment_sources"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_uuid)
+    org_id: Mapped[str] = mapped_column(ForeignKey("organizations.id"), nullable=False)
+
+    # One of: stripe | razorpay | upi | bank | card
+    type: Mapped[str] = mapped_column(String(30), nullable=False)
+
+    # Underlying provider that will execute payments for this source type
+    # e.g. type=upi → provider=razorpayx
+    provider: Mapped[str] = mapped_column(String(50), nullable=False)
+
+    # Human-readable label shown in the UI
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    # Provider-specific tokenized data (account_id, keys, UPI handle, etc.)
+    # Never store raw credentials here — only opaque tokens / masked info.
+    tokenized_data: Mapped[dict] = mapped_column(JSON, default=dict)
+
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    payments = relationship("Payment", back_populates="source")
+
+    __table_args__ = (
+        Index("ix_payment_sources_org_id", "org_id"),
+        Index("ix_payment_sources_type", "type"),
+    )
+
+
+class VendorPaymentDetail(Base):
+    """
+    Payment routing details for a vendor.
+    A vendor can have multiple methods; is_primary marks the preferred one.
+    """
+    __tablename__ = "vendor_payment_details"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_uuid)
+    vendor_id: Mapped[str] = mapped_column(ForeignKey("vendors.id"), nullable=False)
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False)
+
+    # upi | bank | card | stripe_account
+    method: Mapped[str] = mapped_column(String(30), nullable=False)
+
+    # Structured routing data keyed by method:
+    # upi      → {"upi_id": "vendor@upi"}
+    # bank     → {"account_number": "...", "ifsc": "...", "account_name": "..."}
+    # card     → {"stripe_customer_id": "cus_..."}
+    # stripe   → {"stripe_account_id": "acct_..."}
+    details: Mapped[dict] = mapped_column(JSON, default=dict)
+
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    vendor = relationship("Vendor")
+
+    __table_args__ = (
+        Index("ix_vendor_payment_details_vendor_id", "vendor_id"),
+        Index("ix_vendor_payment_details_org_id", "org_id"),
+    )
+
+
+class Payment(Base):
+    """
+    Execution record for every payment attempt.
+    Created when PaymentOrchestrator.execute() is called.
+    Updated via webhooks from the payment provider.
+    """
+    __tablename__ = "payments"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_uuid)
+    org_id: Mapped[str] = mapped_column(ForeignKey("organizations.id"), nullable=False)
+
+    # What is being paid
+    invoice_id: Mapped[str] = mapped_column(ForeignKey("invoices.id"), nullable=True)
+    vendor_id: Mapped[str] = mapped_column(ForeignKey("vendors.id"), nullable=True)
+
+    # Which source was used
+    source_id: Mapped[str] = mapped_column(ForeignKey("payment_sources.id"), nullable=False)
+
+    # Payment amount
+    amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(String(10), default="INR")
+
+    # Execution state
+    status: Mapped[str] = mapped_column(String(30), default=PaymentStatus.PENDING)
+
+    # Which provider adapter processed this payment
+    provider: Mapped[str] = mapped_column(String(50), nullable=True)
+
+    # External transaction/payout ID returned by the provider
+    provider_ref: Mapped[str] = mapped_column(String(255), nullable=True)
+
+    # Full webhook event history from the provider
+    webhook_events: Mapped[list] = mapped_column(JSON, default=list)
+
+    # Optional human note / failure reason
+    failure_reason: Mapped[str] = mapped_column(Text, nullable=True)
+    notes: Mapped[str] = mapped_column(Text, nullable=True)
+
+    # Interactive flow fields (e.g., Razorpay Checkout)
+    action_required: Mapped[bool] = mapped_column(Boolean, default=False)
+    action_data: Mapped[dict] = mapped_column(JSON, nullable=True)
+
+    executed_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    source = relationship("PaymentSource", back_populates="payments")
+    invoice = relationship("Invoice")
+    vendor = relationship("Vendor")
+
+    __table_args__ = (
+        Index("ix_payments_org_id", "org_id"),
+        Index("ix_payments_invoice_id", "invoice_id"),
+        Index("ix_payments_status", "status"),
+        Index("ix_payments_created_at", "created_at"),
     )

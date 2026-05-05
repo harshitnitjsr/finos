@@ -24,6 +24,23 @@ class Settings(BaseSettings):
     
     # Stripe
     STRIPE_SECRET_KEY: str = ""
+    STRIPE_WEBHOOK_SECRET: str = ""  # whsec_... for signature verification
+    STRIPE_PUBLISHABLE_KEY: str = ""
+    STRIPE_CLIENT_ID: str = ""  # ca_... for Stripe Connect OAuth
+
+    # Razorpay / RazorpayX
+    RAZORPAY_KEY_ID: str = ""
+    RAZORPAY_KEY_SECRET: str = ""
+    RAZORPAYX_ACCOUNT_NUMBER: str = ""  # Virtual account for payouts
+    RAZORPAY_WEBHOOK_SECRET: str = ""
+    RAZORPAY_CLIENT_ID: str = ""  # Partner OAuth
+    RAZORPAY_CLIENT_SECRET: str = ""
+
+    # Platform commission charged on top of invoice amount (e.g. 2.0 = 2%)
+    PLATFORM_COMMISSION_PERCENT: float = 0.0
+
+    # Payment system
+    PAYMENT_BASE_URL: str = "http://localhost:8000"  # For webhook registration
     
     # Model Router
     MODEL_ROUTER_REASONING: str = "gpt-4o"
@@ -52,8 +69,14 @@ class Settings(BaseSettings):
     # AWS (optional)
     AWS_ACCESS_KEY_ID: Optional[str] = None
     AWS_SECRET_ACCESS_KEY: Optional[str] = None
-    AWS_S3_BUCKET: Optional[str] = None
     AWS_REGION: str = "us-east-1"
+    
+    # Email Settings
+    SMTP_SERVER: Optional[str] = None
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    SMTP_FROM_EMAIL: str = "noreply@afos.io"
     
     class Config:
         env_file = ".env"

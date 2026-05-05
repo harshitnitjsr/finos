@@ -130,109 +130,158 @@ async def execute_payment_activity(invoice_id: str) -> str:
     logger.info(f"Activity: Executing payment for invoice {invoice_id}")
     
     from datetime import datetime
-    import stripe
+    import razorpay
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
     from app.core.config import settings
     
-    # Use Stripe key from settings
-    stripe.api_key = settings.STRIPE_SECRET_KEY
+    # Initialize Razorpay for Route/Payment Links
+    razorpay_client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
     
     async with AsyncSessionLocal() as db:
-        invoice = await db.get(Invoice, invoice_id)
+        # Force a fresh SELECT from Postgres — the approval endpoint may have
+        # committed bank details to the vendor row AFTER the session was opened.
+        from sqlalchemy import select as sa_select
+        from app.models.models import Vendor
+        invoice_row = await db.execute(sa_select(Invoice).where(Invoice.id == invoice_id))
+        invoice = invoice_row.scalar_one_or_none()
         if not invoice:
             return f"Error: Invoice {invoice_id} not found"
-            
-        try:
-            # 1. DRY-RUN SIMULATION (Blueprint requirement)
-            # We verify the Stripe API is reachable and we have the payload right
-            amount_in_cents = int(float(invoice.total_amount) * 100) if invoice.total_amount else 1000
-            
-            # 2. MULTI-RAIL PAYMENT ROUTING
-            # Fetch the vendor to determine their preferred payment rail
-            from app.models.models import Vendor
-            vendor = await db.get(Vendor, invoice.vendor_id) if invoice.vendor_id else None
-            
-            # Default to Stripe if vendor is unknown or hasn't specified a rail
-            payment_rail = vendor.extra_metadata.get("payment_rail", "stripe") if vendor else "stripe"
-            payment_id = "simulated_id"
-            
-            if payment_rail == "stripe":
-                # Stripe Connect / PaymentIntent
-                payment_intent = stripe.PaymentIntent.create(
-                    amount=amount_in_cents,
-                    currency=invoice.currency.lower() if invoice.currency else "usd",
-                    payment_method="pm_card_visa", # standard test card
-                    confirm=True,
-                    automatic_payment_methods={"enabled": True, "allow_redirects": "never"},
-                    description=f"AFOS Autonomous Payment for Invoice {invoice.invoice_number}",
-                    metadata={
-                        "invoice_id": str(invoice.id),
-                        "org_id": invoice.org_id,
-                        "vendor_id": str(invoice.vendor_id)
-                    }
-                )
-                payment_id = payment_intent.id
-                logger.info(f"Payment routed via Stripe Rail: {payment_id}")
-                
-            elif payment_rail == "ach":
-                # Modern Treasury / Increase API for direct bank transfer
-                # mt.payment_orders.create(type="ach", amount=amount_in_cents, receiving_account_id=vendor.bank_account_id)
-                payment_id = f"ach_transfer_{invoice.id[:8]}"
-                logger.info(f"Payment routed via ACH Rail: {payment_id}")
-                
-            elif payment_rail == "virtual_card":
-                # Generate single-use virtual card via Stripe Issuing or Lithic
-                # card = stripe.issuing.Card.create(type="virtual", currency="usd", spending_controls={...})
-                payment_id = f"vcard_{invoice.id[:8]}"
-                logger.info(f"Payment routed via Virtual Card Rail: {payment_id}")
-                
-            else:
-                raise Exception(f"Unknown payment rail: {payment_rail}")
-            
-            invoice.status = "paid"
-            invoice.paid_at = datetime.utcnow()
 
-            # 3. UPDATE VENDOR TOTAL & CREATE EXPENSE (Analytics Visibility)
-            if vendor:
-                vendor.total_paid = (vendor.total_paid or 0) + (invoice.total_amount or 0)
+        try:
+            amount_in_cents = int(float(invoice.total_amount) * 100) if invoice.total_amount else 1000
+
+            # Fresh SELECT for vendor so bank details committed at approval time are visible
+            vendor = None
+            if invoice.vendor_id:
+                vendor_row = await db.execute(sa_select(Vendor).where(Vendor.id == invoice.vendor_id))
+                vendor = vendor_row.scalar_one_or_none()
+            
+            # Calculate commission
+            commission_pct = settings.PLATFORM_COMMISSION_PERCENT or 0.0
+            invoice_amount_paise = int(amount_in_cents)
+            commission_amount_paise = int(invoice_amount_paise * commission_pct / 100)
+            total_amount_paise = invoice_amount_paise + commission_amount_paise
+            
+            currency = invoice.currency.upper() if invoice.currency else "INR"
+            commission_display = f"{currency} {commission_amount_paise / 100:.2f}" if commission_pct else "None"
+            
+            payment_link_payload = {
+                "amount": total_amount_paise,
+                "currency": currency,
+                "accept_partial": False,
+                "description": f"Payment for Invoice {invoice.invoice_number or invoice_id[:8]}" + (f" (incl. {commission_pct}% platform fee)" if commission_pct else ""),
+                "customer": {
+                    "name": vendor.name if vendor else "Vendor",
+                    "email": vendor.email if vendor and vendor.email else "vendor@example.com",
+                },
+                "notify": {"sms": False, "email": False},
+                "reminder_enable": True,
+                "notes": {
+                    "invoice_id": str(invoice.id),
+                    "org_id": invoice.org_id,
+                    "vendor_id": str(invoice.vendor_id) if invoice.vendor_id else "",
+                    "commission_pct": str(commission_pct),
+                    "commission_amount": str(commission_amount_paise / 100),
+                }
+            }
+            
+            try:
+                link_response = razorpay_client.payment_link.create(payment_link_payload)
+                payment_id = link_response.get("id")
+                short_url = link_response.get("short_url")
                 
-                # Create a matching expense record so this shows up in burn rate/spend charts
-                from app.models.models import Expense, ExpenseStatus
-                expense = Expense(
-                    org_id=invoice.org_id,
-                    description=f"Paid Invoice: {invoice.invoice_number or invoice.id[:8]} - {vendor.name}",
-                    amount=invoice.total_amount or 0,
-                    currency=invoice.currency,
-                    category=vendor.category or "Accounts Payable",
-                    status=ExpenseStatus.APPROVED,
-                    vendor_name=vendor.name,
-                    transaction_date=invoice.paid_at,
-                    extra_metadata={"invoice_id": str(invoice.id), "payment_id": payment_id}
+                # Save the short_url and mark invoice as payment_pending
+                extra_meta = dict(invoice.extra_metadata or {})
+                extra_meta["payment_link"] = short_url
+                extra_meta["payment_link_id"] = payment_id
+                invoice.extra_metadata = extra_meta
+                # Do NOT mark as "paid" yet — wait for the Razorpay webhook
+                invoice.status = "payment_pending"
+                
+                # Mark the Temporal workflow as completed
+                from sqlalchemy import select
+                from app.models.models import Workflow
+                result = await db.execute(
+                    select(Workflow)
+                    .where(Workflow.context.op("->>")("invoice_id") == invoice.id)
+                    .order_by(Workflow.created_at.desc())
                 )
-                db.add(expense)
-            
-            # Find and complete the live Workflow record
-            from sqlalchemy import select
-            from app.models.models import Workflow
-            result = await db.execute(select(Workflow).where(Workflow.context.op("->>")("invoice_id") == invoice.id).order_by(Workflow.created_at.desc()))
-            wf = result.scalars().first()
-            if wf:
-                wf.status = "completed"
-                wf.steps = [
-                    {"id": 1, "name": "Extract", "status": "completed"},
-                    {"id": 2, "name": "Compliance", "status": "completed"},
-                    {"id": 3, "name": "Approval", "status": "completed"},
-                    {"id": 4, "name": "Payment", "status": "completed"}
-                ]
-                wf.current_step = 4
+                wf = result.scalars().first()
+                if wf:
+                    wf.status = "completed"
+                    wf.steps = [
+                        {"id": 1, "name": "Extract",    "status": "completed"},
+                        {"id": 2, "name": "Compliance", "status": "completed"},
+                        {"id": 3, "name": "Approval",   "status": "completed"},
+                        {"id": 4, "name": "Payment",    "status": "completed"},
+                    ]
+                    wf.current_step = 4
                 
-            await db.commit()
-            await cache.invalidate_pattern("invoices")
-            await cache.invalidate_pattern("vendors")
-            await cache.invalidate_pattern("dashboard")
-            await cache.invalidate_pattern("workflows")
-            
-            return f"Payment successful via {payment_rail.upper()} rail! ID: {payment_id}"
-            
-        except stripe.error.StripeError as e:
-            logger.error(f"Stripe payment failed: {e}")
-            raise Exception(f"Payment execution failed: {e.user_message}")
+                await db.commit()
+                await cache.invalidate_pattern("invoices")
+                await cache.invalidate_pattern("vendors")
+                await cache.invalidate_pattern("dashboard")
+                await cache.invalidate_pattern("workflows")
+                
+                logger.info(f"Payment routed via Razorpay Link: {payment_id} -> {short_url}")
+                
+                # ── Send notification email ───────────────────────────────────
+                try:
+                    # Re-read extra_metadata after commit so admin_email is fresh
+                    admin_email = extra_meta.get("admin_email") or settings.SMTP_FROM_EMAIL
+                    
+                    vendor_meta = vendor.extra_metadata or {} if vendor else {}
+                    bank_name   = vendor_meta.get("bank_account_name")   or "Not provided"
+                    bank_number = vendor_meta.get("bank_account_number") or "Not provided"
+                    bank_ifsc   = vendor_meta.get("bank_ifsc_code")       or "Not provided"
+                    bank_note   = (
+                        "" if bank_number != "Not provided"
+                        else "\n                    Note: Bank details were not entered at approval time. "
+                             "You can add them via the Vendors page."
+                    )
+
+                    msg = MIMEMultipart()
+                    msg['From'] = settings.SMTP_FROM_EMAIL
+                    msg['To'] = admin_email
+                    msg['Subject'] = f"Action Required: Pay Vendor Invoice {invoice.invoice_number or invoice_id[:8]}"
+                    
+                    body = f"""
+                    Hello,
+
+                    The invoice for {vendor.name if vendor else 'Unknown Vendor'} has been approved.
+
+                    Please click the link below to securely pay the vendor via Razorpay:
+                    {short_url}
+
+                    Vendor Bank Details Provided:
+                    Account Name:   {bank_name}
+                    Account Number: {bank_number}
+                    IFSC Code:      {bank_ifsc}{bank_note}
+
+                    Once paid, the invoice will automatically be marked as Paid in your dashboard.
+                    """
+                    msg.attach(MIMEText(body, 'plain'))
+                    
+                    if settings.SMTP_SERVER and settings.SMTP_USERNAME and settings.SMTP_PASSWORD:
+                        server = smtplib.SMTP(settings.SMTP_SERVER, settings.SMTP_PORT)
+                        server.starttls()
+                        server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+                        server.sendmail(settings.SMTP_FROM_EMAIL, admin_email, msg.as_string())
+                        server.quit()
+                        logger.info(f"Payment Link email sent to {admin_email} via SMTP.")
+                    else:
+                        logger.warning(f"SMTP not configured. Simulating Email to {admin_email}...")
+                        print(f"\n{'='*50}\n[MOCK EMAIL -> {admin_email}]\n{body}\n{'='*50}\n")
+                except Exception as email_err:
+                    logger.error(f"Failed to send email: {email_err}")
+                
+                return f"Payment Link generated successfully! URL: {short_url}"
+            except Exception as e:
+                logger.exception("Failed to generate Razorpay Payment Link")
+                raise Exception(f"Failed to generate Payment Link: {str(e)}")
+
+        except Exception as outer:
+            logger.error(f"execute_payment_activity failed for {invoice_id}: {outer}")
+            raise

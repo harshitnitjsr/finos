@@ -61,3 +61,7 @@ celery==5.4.0
 
 # Workflow Orchestration
 temporalio>=1.7.0
+
+# Payment Providers
+stripe>=10.0.0
+razorpay>=1.4.2

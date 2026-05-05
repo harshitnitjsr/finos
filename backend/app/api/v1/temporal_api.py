@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel
 from loguru import logger
 
@@ -15,6 +15,8 @@ class StartInvoiceRequest(BaseModel):
 class SignalInvoiceRequest(BaseModel):
     invoice_id: str  # We use this as the Workflow ID
     action: str      # 'approve' or 'reject'
+    details: dict | None = None
+    admin_email: str | None = None  # logged-in user's email
 
 
 @router.post("/invoice/start")
@@ -70,10 +72,18 @@ async def start_invoice_workflow(request: StartInvoiceRequest):
 
 
 @router.post("/invoice/signal")
-async def signal_invoice_workflow(request: SignalInvoiceRequest):
+async def signal_invoice_workflow(
+    request: SignalInvoiceRequest,
+    x_user_email: str = Header("", alias="x-user-email"),
+):
     """Sends an approval or rejection signal to a sleeping workflow."""
     if not temporal_manager.client:
         raise HTTPException(status_code=500, detail="Temporal client not connected.")
+
+    # Prefer header email (injected by Next.js proxy) over body field
+    admin_email = x_user_email.strip() or request.admin_email
+    if admin_email:
+        request.admin_email = admin_email
 
     if request.action not in ["approve", "reject"]:
         raise HTTPException(status_code=400, detail="Action must be 'approve' or 'reject'")
@@ -111,6 +121,23 @@ async def signal_invoice_workflow(request: SignalInvoiceRequest):
                     .where(Approval.invoice_id == request.invoice_id, Approval.status == "pending")
                     .values(status=approval_status)
                 )
+                
+                if request.action == "approve" and request.details and invoice.vendor_id:
+                    from app.models.models import Vendor
+                    vendor = await db.get(Vendor, invoice.vendor_id)
+                    if vendor:
+                        em = dict(vendor.extra_metadata or {})
+                        em["bank_account_number"] = request.details.get("account_number")
+                        em["bank_ifsc_code"] = request.details.get("ifsc_code")
+                        em["bank_account_name"] = request.details.get("account_name")
+                        em["payment_rail"] = "razorpay_link"
+                        vendor.extra_metadata = em
+                
+                # Save the admin email to the invoice for use by Temporal activity
+                if request.action == "approve" and request.admin_email:
+                    inv_meta = dict(invoice.extra_metadata or {})
+                    inv_meta["admin_email"] = request.admin_email
+                    invoice.extra_metadata = inv_meta
                 
                 await db.commit()
                 await cache.invalidate_pattern("invoices")

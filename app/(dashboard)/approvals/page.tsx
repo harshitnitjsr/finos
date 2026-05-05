@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { CheckCircle, XCircle, Clock, AlertTriangle, InboxIcon, ChevronDown, ChevronUp } from "lucide-react";
 import PageContextHelp from "@/components/global/PageContextHelp";
+import VendorBankModal from "@/components/global/VendorBankModal";
 
 import { apiFetch } from "@/lib/api";
 const cv = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.05 } } };
@@ -31,14 +32,18 @@ function useApprovals(status?: string) {
 export default function ApprovalsPage() {
   const [filterStatus, setFilterStatus] = useState<string | undefined>(undefined);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
   const qc = useQueryClient();
 
   const { data, isLoading } = useApprovals(filterStatus);
   const approvals: Record<string, unknown>[] = data?.approvals || [];
 
   const actionMutation = useMutation({
-    mutationFn: ({ id, action }: { id: string; action: "approve" | "reject" }) =>
-      apiFetch(`/approvals/${id}/${action}`, { method: "POST" }),
+    mutationFn: ({ id, action, details }: { id: string; action: "approve" | "reject", details?: any }) =>
+      apiFetch(`/approvals/${id}/${action}`, { 
+        method: "POST",
+        body: details ? JSON.stringify(details) : undefined 
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["approvals"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
@@ -170,7 +175,7 @@ export default function ApprovalsPage() {
                       {isPending && (
                         <div className="flex gap-3 pt-2">
                           <button
-                            onClick={() => actionMutation.mutate({ id: appr.id as string, action: "approve" })}
+                            onClick={() => setApprovingId(appr.id as string)}
                             disabled={actionMutation.isPending}
                             className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all hover:opacity-90 disabled:opacity-50"
                             style={{ background: "rgba(16,185,129,0.15)", color: "#10b981", border: "1px solid rgba(16,185,129,0.3)" }}>
@@ -180,6 +185,19 @@ export default function ApprovalsPage() {
                               <><CheckCircle size={14} /> Approve</>
                             )}
                           </button>
+                          
+                          <VendorBankModal 
+                            isOpen={approvingId === appr.id} 
+                            onClose={() => setApprovingId(null)}
+                            vendorName={appr.vendor_name as string | null}
+                            existingBank={appr.vendor_bank as { account_name?: string; account_number?: string; ifsc_code?: string } | null}
+                            onSubmit={(details) => {
+                                actionMutation.mutate({ id: appr.id as string, action: "approve", details });
+                                setApprovingId(null);
+                            }}
+                            isSubmitting={actionMutation.isPending && actionMutation.variables?.id === appr.id}
+                          />
+                          
                           <button
                             onClick={() => actionMutation.mutate({ id: appr.id as string, action: "reject" })}
                             disabled={actionMutation.isPending}

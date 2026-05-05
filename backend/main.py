@@ -80,6 +80,11 @@ PUBLIC_PREFIXES = (
     "/api/docs",
     "/api/redoc",
     "/openapi.json",
+    # Webhook endpoints — called by external services (Razorpay, Stripe, etc.)
+    # that cannot send our internal X-Internal-Token header
+    "/api/v1/payments/webhook/",
+    "/api/v1/payments/razorpay-webhook",
+    "/api/v1/payments/stripe-webhook",
 )
 
 

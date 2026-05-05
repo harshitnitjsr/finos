@@ -75,28 +75,19 @@ async def categorize_expense_background(expense_id: str, org_id: str):
 
         await db.commit()
 
-        # Step 2.5: Auto-create Vendor if it doesn't exist and link to expense
+        # Step 2.5: Auto-create/link Vendor using dedup utility
         if expense.vendor_name:
-            from app.models.models import Vendor
-            v_res = await db.execute(select(Vendor).where(Vendor.name == expense.vendor_name, Vendor.org_id == org_id).limit(1))
-            vendor = v_res.scalar_one_or_none()
-            if not vendor:
-                vendor = Vendor(org_id=org_id, name=expense.vendor_name, risk_score=20.0, risk_level="low", payment_currency=expense.currency)
-                db.add(vendor)
-                await db.flush()
-                # Embed and index the new vendor into Qdrant
-                v_embed_text = f"{vendor.name} {expense.category or ''} {expense.currency}"
-                v_embed = await model_router.embed(v_embed_text)
-                await vector_store.upsert_vendor(
-                    vendor_id=str(vendor.id),
-                    embedding=v_embed,
-                    payload={"org_id": org_id, "name": vendor.name, "category": expense.category or "", "risk_level": "low"}
-                )
-            
-            # Link vendor to expense
+            from app.core.vendor_utils import find_or_create_vendor
+            vendor, created = await find_or_create_vendor(
+                db=db,
+                org_id=org_id,
+                name=expense.vendor_name,
+                category=expense.category,
+                payment_currency=expense.currency,
+            )
             expense.vendor_id = vendor.id
             await db.commit()
-            # Invalidate vendors cache
+            # Always invalidate — vendor total_paid changes whether vendor is new or existing
             await cache.invalidate_pattern("vendors")
 
         # Step 3: Embed and upsert into Qdrant for future anomaly clustering

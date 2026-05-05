@@ -17,6 +17,7 @@ const NAV_ITEMS = [
   { href: "/workflows", icon: Workflow, label: "Workflows", group: "ops" },
   { href: "/agents", icon: Bot, label: "Intelligence", group: "ops" },
   { href: "/workspace", icon: MessageSquare, label: "AI Workspace", group: "ops", aiLabel: true },
+  { href: "/payments", icon: CreditCard, label: "Payments", group: "ops" },
   { href: "/treasury", icon: Landmark, label: "Treasury", group: "ops" },
   { href: "/analytics", icon: BarChart3, label: "Analytics", group: "ops" },
   { href: "/settings", icon: Settings, label: "Settings", group: "config" },

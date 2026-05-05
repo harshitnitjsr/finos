@@ -74,11 +74,16 @@ async def list_vendors(
     )
     res_inv = await db.execute(q_inv)
     
-    # 2. Expenses
+    # 2. Expenses — exclude auto-created payment audit records (already counted as invoices)
+    from sqlalchemy import or_
     q_exp = (
         select(Vendor.id, Expense.currency, func.sum(Expense.amount).label("curr_total"))
         .join(Expense, Expense.vendor_id == Vendor.id)
-        .where(Expense.org_id == org_id)
+        .where(
+            Expense.org_id == org_id,
+            ~Expense.description.ilike("Paid via Payment Link%"),
+            ~Expense.description.ilike("Paid Invoice:%"),
+        )
         .group_by(Vendor.id, Expense.currency)
     )
     res_exp = await db.execute(q_exp)
@@ -96,11 +101,9 @@ async def list_vendors(
     vendors = []
     for vendor in rows:
         v_dict = _vendor_to_dict(vendor)
-        # Use consolidated total if available, else fallback to vendor's static column (converted)
         if vendor.id in vendor_currency_map:
             v_dict["total_paid"] = vendor_currency_map[vendor.id]
         else:
-            # Fallback to static column but convert it (assuming it was in vendor's payment_currency)
             v_dict["total_paid"] = fx_service.convert(float(vendor.total_paid or 0), vendor.payment_currency, base_currency, rates)
         vendors.append(v_dict)
     
@@ -126,39 +129,27 @@ async def create_vendor(
     org_id: str = Depends(get_org_id),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create vendor and index in Qdrant."""
-    vendor = Vendor(
+    """Create vendor or return existing one if name already exists (dedup)."""
+    from app.core.vendor_utils import find_or_create_vendor
+
+    vendor, created = await find_or_create_vendor(
+        db=db,
         org_id=org_id,
         name=body.name,
         email=body.email,
         category=body.category,
-        payment_currency=body.payment_currency,
-        risk_level="low",
-        risk_score=10.0,
-        is_active=True,
-        extra_metadata={"website": body.website} if body.website else {},
+        payment_currency=body.payment_currency or "USD",
+        website=body.website,
     )
-    db.add(vendor)
-    await db.flush()
-
-    embed_text = f"{body.name} {body.category or ''} {body.payment_currency}"
-    embedding = await model_router.embed(embed_text)
-    await vector_store.upsert_vendor(
-        vendor_id=str(vendor.id),
-        embedding=embedding,
-        payload={
-            "org_id": org_id,
-            "name": body.name,
-            "category": body.category or "",
-            "risk_level": "low",
-            "risk_score": 10.0,
-            "is_verified": False,
-        },
-    )
-
     await db.commit()
+
+    if not created:
+        await cache.invalidate_pattern("vendors")
+        return {**_vendor_to_dict(vendor), "_existing": True, "_message": f"Vendor '{vendor.name}' already exists — returned existing record."}
+
     await cache.invalidate_pattern("vendors")
     return _vendor_to_dict(vendor)
+
 
 
 @router.get("/{vendor_id}")
@@ -172,10 +163,10 @@ async def get_vendor(
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor not found")
 
-    # Invoice history
+    # Invoice history (paid invoices only)
     inv_result = await db.execute(
         select(func.count(Invoice.id), func.sum(Invoice.total_amount), Invoice.currency)
-        .where(Invoice.vendor_id == vendor_id)
+        .where(Invoice.vendor_id == vendor_id, Invoice.status == "paid")
         .group_by(Invoice.currency)
     )
     invoice_stats = [
@@ -251,7 +242,7 @@ def _vendor_to_dict(v: Vendor) -> dict:
         "name": v.name,
         "email": v.email,
         "category": v.category,
-        "website": meta.get("website"),          # stored in extra_metadata, not a column
+        "website": meta.get("website"),
         "risk_level": v.risk_level,
         "risk_score": float(v.risk_score or 0),
         "is_verified": v.is_verified,
@@ -259,4 +250,10 @@ def _vendor_to_dict(v: Vendor) -> dict:
         "total_paid": float(v.total_paid or 0),
         "payment_currency": v.payment_currency,
         "created_at": v.created_at.isoformat(),
+        # Bank details saved during approval modal
+        "bank_details": {
+            "account_name": meta.get("bank_account_name"),
+            "account_number": meta.get("bank_account_number"),
+            "ifsc_code": meta.get("bank_ifsc_code"),
+        } if any([meta.get("bank_account_name"), meta.get("bank_account_number"), meta.get("bank_ifsc_code")]) else None,
     }

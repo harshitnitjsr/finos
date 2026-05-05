@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Upload, Search, Filter, FileText, X, AlertTriangle, CheckCircle, Clock, InboxIcon } from "lucide-react";
 import { useCallback } from "react";
 import PageContextHelp from "@/components/global/PageContextHelp";
+import VendorBankModal from "@/components/global/VendorBankModal";
 
 import { apiFetch } from "@/lib/api";
 const cv = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.05 } } };
@@ -32,6 +33,7 @@ export default function InvoicesPage() {
   const [filterStatus, setFilterStatus] = useState<string | undefined>(undefined);
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const qc = useQueryClient();
 
@@ -60,10 +62,10 @@ export default function InvoicesPage() {
   });
 
   const approveTemporalMutation = useMutation({
-    mutationFn: (invoiceId: string) =>
+    mutationFn: ({ invoiceId, details }: { invoiceId: string; details?: any }) =>
       apiFetch("/temporal/invoice/signal", {
         method: "POST",
-        body: JSON.stringify({ invoice_id: invoiceId, action: "approve" }),
+        body: JSON.stringify({ invoice_id: invoiceId, action: "approve", details }),
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["invoices"] }),
   });
@@ -276,12 +278,25 @@ export default function InvoicesPage() {
                   {startTemporalMutation.isPending || selected.status === "processing" ? "Processing..." : "Start Workflow"}
                 </button>
                 {selected.status === "awaiting_approval" && (
-                  <button 
-                    onClick={() => approveTemporalMutation.mutate(selected.id as string)}
-                    disabled={approveTemporalMutation.isPending}
-                    className="flex-1 py-2 bg-emerald-500/20 text-emerald-400 font-semibold rounded-lg text-xs hover:bg-emerald-500/30 transition-all">
-                    {approveTemporalMutation.isPending ? "Approving..." : "Approve Payment"}
-                  </button>
+                  <>
+                    <button 
+                      onClick={() => setApprovingId(selected.id as string)}
+                      disabled={approveTemporalMutation.isPending}
+                      className="flex-1 py-2 bg-emerald-500/20 text-emerald-400 font-semibold rounded-lg text-xs hover:bg-emerald-500/30 transition-all">
+                      {approveTemporalMutation.isPending && approveTemporalMutation.variables?.invoiceId === selected.id ? "Approving..." : "Approve Payment"}
+                    </button>
+                    <VendorBankModal 
+                      isOpen={approvingId === selected.id} 
+                      onClose={() => setApprovingId(null)}
+                      vendorName={selected.vendor_name as string | null}
+                      existingBank={selected.vendor_bank as { account_name?: string; account_number?: string; ifsc_code?: string } | null}
+                      onSubmit={(details) => {
+                          approveTemporalMutation.mutate({ invoiceId: selected.id as string, details });
+                          setApprovingId(null);
+                      }}
+                      isSubmitting={approveTemporalMutation.isPending && approveTemporalMutation.variables?.invoiceId === selected.id}
+                    />
+                  </>
                 )}
               </div>
             </motion.div>
