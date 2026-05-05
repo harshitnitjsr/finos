@@ -234,7 +234,7 @@ function PlanCard({
         </div>
         {!isFree && (
           <p className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>
-            Billed monthly · Cancel anytime
+            Billed monthly · 
           </p>
         )}
       </div>
@@ -409,7 +409,7 @@ export default function PricingPage() {
       {/* Footer */}
       <motion.div variants={iv} className="text-center space-y-1">
         <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
-          All prices in INR (Indian Rupees). Monthly billing. Cancel anytime from Settings → Billing.
+          g.
         </p>
         <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
           Payments are processed by <span className="text-white font-medium">Razorpay</span> — we never store your card details.

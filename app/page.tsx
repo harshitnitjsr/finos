@@ -208,28 +208,32 @@ export default function HomePage() {
       <motion.nav 
         initial={{ y: -100 }}
         animate={{ y: 0 }}
-        className="fixed top-8 left-1/2 -translate-x-1/2 w-[90%] max-w-5xl border border-white/5 bg-[#050810]/50 backdrop-blur-2xl z-50 px-8 py-4 rounded-2xl shadow-2xl"
+        className="fixed top-8 left-1/2 -translate-x-1/2 w-[92%] max-w-6xl border border-white/5 bg-[#050810]/60 backdrop-blur-2xl z-50 px-6 py-3.5 rounded-2xl shadow-2xl"
       >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 group cursor-pointer">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-lime-600 flex items-center justify-center shadow-lg shadow-emerald-500/20 group-hover:rotate-12 transition-transform duration-500">
-              <Zap className="w-6 h-6 text-white" />
+        <div className="flex items-center justify-between gap-4">
+          {/* Logo */}
+          <div className="flex items-center gap-2.5 group cursor-pointer flex-shrink-0">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-lime-600 flex items-center justify-center shadow-lg shadow-emerald-500/20 group-hover:rotate-12 transition-transform duration-500">
+              <Zap className="w-5 h-5 text-white" />
             </div>
-            <span className="text-2xl font-black tracking-tight shiny-text uppercase">Orqentra</span>
-          </div>
-          
-          <div className="hidden md:flex items-center gap-10 text-xs font-black tracking-widest text-white/30 uppercase">
-            <Link href="#features" className="hover:text-white transition-colors">Infrastructure</Link>
-            <Link href="#pipeline" className="hover:text-white transition-colors">Autonomous Grid</Link>
-            <Link href="/dashboard" className="hover:text-white text-emerald-500 transition-colors">Core Intelligence</Link>
+            <span className="text-xl font-black tracking-tight shiny-text uppercase">Orqentra</span>
           </div>
 
-          <div className="flex items-center gap-6">
-            <Link href="/auth/signin" className="hidden sm:block text-xs font-black tracking-widest uppercase text-white/40 hover:text-white transition-colors">Log In</Link>
+          {/* Nav Links */}
+          <div className="hidden lg:flex items-center gap-7 text-[10px] font-black tracking-wider text-white/30 uppercase whitespace-nowrap">
+            <Link href="#features" className="hover:text-white transition-colors">Infrastructure</Link>
+            <Link href="#pipeline" className="hover:text-white transition-colors">Autonomous</Link>
+            <Link href="#pricing" className="hover:text-white transition-colors">Pricing</Link>
+            <Link href="/dashboard" className="hover:text-white text-emerald-500 transition-colors">Intelligence</Link>
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center gap-4 flex-shrink-0">
+            <Link href="/auth/signin" className="hidden sm:block text-[10px] font-black tracking-wider uppercase text-white/40 hover:text-white transition-colors whitespace-nowrap">Log In</Link>
             <MagneticWrapper>
               <Link 
                 href="/auth/signin"
-                className="px-6 py-2.5 bg-emerald-600 text-white text-xs font-black tracking-widest uppercase rounded-xl hover:bg-white hover:text-black transition-all duration-300 shadow-xl shadow-emerald-500/20"
+                className="px-5 py-2.5 bg-emerald-600 text-white text-[10px] font-black tracking-wider uppercase rounded-xl hover:bg-white hover:text-black transition-all duration-300 shadow-xl shadow-emerald-500/20 whitespace-nowrap"
               >
                 Launch OS
               </Link>
@@ -349,7 +353,7 @@ export default function HomePage() {
               {[
                 { step: "01", title: "Ingest", desc: "PDFs, APIs, and Webhooks are ingested into the neural stream.", icon: <Globe className="w-6 h-6" /> },
                 { step: "02", title: "Verify", desc: "Autonomous agents validate against OPA compliance rules.", icon: <Shield className="w-6 h-6" /> },
-                { step: "03", title: "Execute", desc: "Multi-rail settlement across Stripe, ACH, and Cards.", icon: <Zap className="w-6 h-6" /> },
+                { step: "03", title: "Execute", desc: "System execution", icon: <Zap className="w-6 h-6" /> },
                 { step: "04", title: "Audit", desc: "Every transaction is logged in an immutable vector ledger.", icon: <BarChart3 className="w-6 h-6" /> }
               ].map((item, i) => (
                 <motion.div 
@@ -668,11 +672,226 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* â”€â”€ Pricing Section â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        <section id="pricing" className="py-64 px-6 relative overflow-hidden">
+          {/* ambient glow */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80%] h-[60%] bg-emerald-600/5 blur-[180px] rounded-full pointer-events-none" />
+
+          <div className="max-w-7xl mx-auto relative z-10">
+
+            {/* Header */}
+            <motion.div
+              initial={{ opacity: 0, y: 40 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8 }}
+              viewport={{ once: true, margin: "-100px" }}
+              className="text-center mb-24"
+            >
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-xl bg-white/5 border border-white/10 text-white/40 text-[10px] font-black uppercase tracking-widest mb-10">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Transparent Pricing Protocol
+              </div>
+              <h2 className="text-6xl md:text-8xl font-black tracking-tighter leading-[0.85] mb-8 uppercase">
+                CHOOSE YOUR <br />
+                <span className="text-white/20">OPERATING TIER.</span>
+              </h2>
+              <p className="max-w-2xl mx-auto text-xl text-white/30 font-bold leading-relaxed">
+                Start free — no credit card needed. Upgrade when you need more invoices or AI prompts.
+                Billing via <span className="text-white/50">Razorpay</span>
+              </p>
+            </motion.div>
+
+            {/* Cards — exact features from /pricing page */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5 items-stretch">
+              {[
+                {
+                  tier: "00",
+                  slug: "free",
+                  name: "Free",
+                  desc: "30-day trial — 5 invoices & 10 AI prompts.",
+                  price: "₹0",
+                  period: "",
+                  highlight: false,
+                  accentColor: "rgba(100,116,139,0.7)",
+                  gradientBg: "rgba(100,116,139,0.05)",
+                  features: [
+                    "5 invoice uploads — trial only",
+                    "10 AI chat prompts — trial only",
+                    "Expires 30 days after signup",
+                    "Full platform access during trial",
+                  ],
+                  ctaLabel: "Free — No payment needed",
+                  ctaHref: "/auth/signin",
+                },
+                {
+                  tier: "01",
+                  slug: "starter",
+                  name: "Starter",
+                  desc: "For small teams managing their finances.",
+                  price: "₹999",
+                  period: "/mo",
+                  highlight: false,
+                  accentColor: "rgba(59,130,246,0.7)",
+                  gradientBg: "rgba(59,130,246,0.05)",
+                  features: [
+                    "100 invoice uploads / month",
+                    "500 AI chat prompts / month",
+                    "AI OCR invoice extraction",
+                    "Duplicate detection & risk scoring",
+                    "Approval workflows",
+                    "Vendor & analytics dashboard",
+                  ],
+                  ctaLabel: "Upgrade with Razorpay",
+                  ctaHref: "/auth/signin",
+                },
+                {
+                  tier: "02",
+                  slug: "pro",
+                  name: "Pro",
+                  desc: "For growing businesses with high invoice volume.",
+                  price: "₹2,999",
+                  period: "/mo",
+                  highlight: true,
+                  accentColor: "rgba(139,92,246,0.8)",
+                  gradientBg: "rgba(139,92,246,0.07)",
+                  features: [
+                    "1,000 invoice uploads / month",
+                    "5,000 AI chat prompts / month",
+                    "Everything in Starter",
+                    "Priority support",
+                  ],
+                  ctaLabel: "Upgrade with Razorpay",
+                  ctaHref: "/auth/signin",
+                },
+                {
+                  tier: "03",
+                  slug: "enterprise",
+                  name: "Enterprise",
+                  desc: "Unlimited everything for large organisations.",
+                  price: "₹7,999",
+                  period: "/mo",
+                  highlight: false,
+                  accentColor: "rgba(245,158,11,0.7)",
+                  gradientBg: "rgba(245,158,11,0.05)",
+                  features: [
+                    "Unlimited invoice uploads",
+                    "Unlimited AI chat prompts",
+                    "Everything in Pro",
+                  ],
+                  ctaLabel: "Upgrade with Razorpay",
+                  ctaHref: "/auth/signin",
+                },
+              ].map((plan, i) => (
+                <motion.div
+                  key={plan.slug}
+                  initial={{ opacity: 0, y: 40 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.55, delay: i * 0.1 }}
+                  viewport={{ once: true }}
+                  whileHover={{ y: -8 }}
+                  className="relative flex flex-col rounded-[2.5rem] overflow-hidden transition-all duration-300"
+                  style={{
+                    background: `linear-gradient(135deg, ${plan.gradientBg}, rgba(5,8,16,0.95))`,
+                    border: `1px solid ${plan.highlight ? plan.accentColor : "rgba(255,255,255,0.05)"}`,
+                    boxShadow: plan.highlight ? `0 0 60px ${plan.accentColor}20` : "none",
+                  }}
+                >
+                  {/* Most Popular badge */}
+                  {plan.highlight && (
+                    <div
+                      className="absolute top-0 right-0 px-3 py-1 text-[10px] font-black uppercase rounded-bl-2xl tracking-wider"
+                      style={{ background: plan.accentColor, color: "#fff" }}
+                    >
+                      MOST POPULAR
+                    </div>
+                  )}
+
+                  {/* Card header */}
+                  <div className="p-8 pb-6">
+                    <span className="text-5xl font-black italic leading-none mb-6 block" style={{ color: plan.accentColor, opacity: 0.15 }}>
+                      {plan.tier}
+                    </span>
+
+                    <div className="text-[9px] font-black uppercase tracking-widest mb-1" style={{ color: plan.accentColor, opacity: 0.6 }}>
+                      {plan.desc}
+                    </div>
+                    <h3 className="text-2xl font-black uppercase tracking-tighter text-white mb-6">{plan.name}</h3>
+
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-4xl font-black tracking-tighter text-white">{plan.price}</span>
+                      {plan.period && (
+                        <span className="text-sm text-white/30 font-bold">{plan.period}</span>
+                      )}
+                    </div>
+                    {plan.period && (
+                      <p className="text-[10px] text-white/25 mt-1 font-bold">Billed monthly · </p>
+                    )}
+                  </div>
+
+                  {/* Divider */}
+                  <div className="mx-8 h-px bg-white/5" />
+
+                  {/* Features — exact copy from /pricing PLAN_FEATURES */}
+                  <div className="flex-1 p-8 space-y-3">
+                    {plan.features.map((feat) => (
+                      <div key={feat} className="flex items-start gap-2.5">
+                        <svg className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24" style={{ color: plan.accentColor }}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span className="text-[12px] font-semibold text-white/55 leading-tight">{feat}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* CTA */}
+                  <div className="p-8 pt-0">
+                    <Link
+                      href={plan.ctaHref}
+                      className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-300 hover:opacity-90"
+                      style={{
+                        background: plan.slug === "free"
+                          ? "rgba(100,116,139,0.08)"
+                          : plan.accentColor + "20",
+                        color: plan.slug === "free" ? "rgba(148,163,184,0.6)" : plan.accentColor,
+                        border: `1px solid ${plan.slug === "free" ? "rgba(255,255,255,0.06)" : plan.accentColor + "44"}`,
+                      }}
+                    >
+                      {plan.ctaLabel}
+                      {plan.slug !== "free" && <ArrowRight className="w-3.5 h-3.5" />}
+                    </Link>
+                    {plan.slug !== "free" && (
+                      <p className="text-center text-[10px] mt-2 text-white/20 font-bold">
+                        🔒 Secured by Razorpay
+                      </p>
+                    )}
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+
+            {/* Footer note */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              whileInView={{ opacity: 1 }}
+              transition={{ delay: 0.5 }}
+              viewport={{ once: true }}
+              className="mt-16 text-center space-y-2"
+            >
+              <p className="text-[10px] font-bold uppercase tracking-widest text-white/15">
+                g.
+              </p>
+              <p className="text-[10px] font-bold text-white/15">
+                Payments are processed by <span className="text-white/30 font-semibold">Razorpay</span> — we never store your card details.
+              </p>
+            </motion.div>
+          </div>
+        </section>
+
         {/* Footer */}
         <footer className="py-32 px-6 border-t border-white/5 bg-[#010314]">
           <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start gap-20">
             <div className="max-w-lg text-left">
-              <div className="flex items-center gap-3 mb-10">
+               <div className="flex items-center gap-3 mb-10">
                 <div className="w-12 h-12 rounded-2xl bg-emerald-600 flex items-center justify-center">
                   <Zap className="w-7 h-7 text-white" />
                 </div>
