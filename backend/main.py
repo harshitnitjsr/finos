@@ -100,6 +100,11 @@ class InternalAuthMiddleware(BaseHTTPMiddleware):
         if not path.startswith("/api/v1"):
             return await call_next(request)
 
+        # CORS preflight — browser strips all custom headers from OPTIONS requests,
+        # so there is no X-Internal-Token to validate. Let CORS middleware handle it.
+        if request.method == "OPTIONS":
+            return await call_next(request)
+
         # In development mode, skip enforcement if secret is the placeholder
         secret = settings.BACKEND_API_SECRET
         if secret == "change_me_in_production" and settings.ENVIRONMENT == "development":
@@ -117,6 +122,7 @@ class InternalAuthMiddleware(BaseHTTPMiddleware):
             )
 
         return await call_next(request)
+
 
 
 app = FastAPI(

@@ -205,13 +205,25 @@ export function useWorkspace(): UseWorkspaceReturn {
     abortRef.current = new AbortController();
 
     try {
+      // For SSE, bypass the Vercel proxy (10s timeout) — connect directly to FastAPI.
+      const ctxRes = await fetch("/api/sse-context");
+      if (!ctxRes.ok) throw new Error("Failed to get SSE context");
+      const ctx = await ctxRes.json() as {
+        orgId: string; userId: string; userEmail: string; token: string;
+      };
+
+      const BACKEND = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
       const res = await fetch(
-        `/api/backend/workspace-chats/${chatId}/messages/stream`,
+        `${BACKEND}/api/v1/workspace-chats/${chatId}/messages/stream`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "Accept": "text/event-stream",
+            "X-Org-ID": ctx.orgId,
+            "X-User-ID": ctx.userId,
+            "X-User-Email": ctx.userEmail,
+            "X-Internal-Token": ctx.token,
           },
           body: JSON.stringify({ message: text.trim() }),
           signal: abortRef.current.signal,

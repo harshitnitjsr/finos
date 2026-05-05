@@ -320,11 +320,25 @@ export default function ChatWidget() {
     abortRef.current = new AbortController();
 
     try {
-      const res = await fetch(`/api/backend/chat/stream`, {
+      // For SSE, bypass the Vercel proxy (10s timeout) and hit FastAPI directly.
+      // We first grab the session context (org_id, internal token) from a lightweight
+      // Next.js endpoint, then open the stream straight to the backend.
+      const ctxRes = await fetch("/api/sse-context");
+      if (!ctxRes.ok) throw new Error("Failed to get SSE context");
+      const ctx = await ctxRes.json() as {
+        orgId: string; userId: string; userEmail: string; token: string;
+      };
+
+      const BACKEND = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const res = await fetch(`${BACKEND}/api/v1/chat/stream`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Accept": "text/event-stream",
+          "X-Org-ID": ctx.orgId,
+          "X-User-ID": ctx.userId,
+          "X-User-Email": ctx.userEmail,
+          "X-Internal-Token": ctx.token,
         },
         body: JSON.stringify({ message: text.trim(), session_id: sessionId }),
         signal: abortRef.current.signal,
