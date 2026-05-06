@@ -28,17 +28,21 @@ COLLECTION_ANOMALIES = "afos_anomalies"
 COLLECTION_CONVERSATIONS = "afos_conversations"  # semantic memory
 COLLECTION_WORKFLOWS = "afos_workflows"           # workflow context RAG
 
-VECTOR_DIM = 1536  # text-embedding-3-small dimension
+VECTOR_DIM = 1024  # bge-m3 dimension (DO Tier 1 free embedding model)
 
 
 class VectorStoreService:
     """
     Qdrant-backed vector store for semantic financial search and deduplication.
-    All collections use text-embedding-3-small (1536 dims, cosine similarity).
+    All collections use bge-m3 (1024 dims, cosine similarity) via DO Inference Hub.
     """
 
     def __init__(self):
-        self.client = AsyncQdrantClient(url=settings.QDRANT_URL, timeout=10)
+        self.client = AsyncQdrantClient(
+            url=settings.QDRANT_URL,
+            api_key=settings.QDRANT_API_KEY,
+            timeout=10
+        )
         self._initialized = False
 
     async def initialize(self) -> None:

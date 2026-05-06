@@ -39,6 +39,7 @@ from app.models.models import (
     VendorPaymentDetail,
 )
 from app.payments import payment_orchestrator
+from app.core.vendor_utils import update_vendor_spend
 
 router = APIRouter()
 
@@ -548,11 +549,17 @@ async def verify_payment(
             invoice.status = "paid"
             invoice.paid_at = datetime.utcnow()
             
-    # Update vendor total_paid
+    # Update vendor total_paid (normalized to org base currency)
     if payment.vendor_id:
         vendor = await db.get(Vendor, payment.vendor_id)
         if vendor:
-            vendor.total_paid = float(vendor.total_paid or 0) + float(payment.amount)
+            await update_vendor_spend(
+                db=db,
+                vendor=vendor,
+                amount=float(payment.amount),
+                currency=payment.currency,
+                org_id=org_id
+            )
             
     await db.commit()
     await cache.invalidate_pattern("payments")
@@ -884,10 +891,13 @@ async def razorpay_webhook(request: Request, db: AsyncSession = Depends(get_db))
                         from app.models.models import Vendor
                         vendor = await db.get(Vendor, vendor_id.strip())
                         if vendor:
-                            vendor.total_paid = float(vendor.total_paid or 0) + float(invoice.total_amount or 0)
-                            # Also sync the payment_currency to match the invoice so FX display is correct
-                            if invoice.currency:
-                                vendor.payment_currency = invoice.currency
+                            await update_vendor_spend(
+                                db=db,
+                                vendor=vendor,
+                                amount=float(invoice.total_amount or 0),
+                                currency=invoice.currency or "INR",
+                                org_id=invoice.org_id
+                            )
 
                             from app.models.models import Expense, ExpenseStatus
                             expense = Expense(

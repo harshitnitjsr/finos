@@ -8,6 +8,7 @@ import re
 from typing import Optional
 from loguru import logger
 from app.core.model_router import model_router, ModelTask
+from app.core.config import settings
 
 
 # Built-in policy rules
@@ -100,11 +101,10 @@ Return JSON: {
 class ComplianceAgent:
     """AI agent for policy enforcement and compliance evaluation."""
 
-    OPA_URL = "http://localhost:8181/v1/data/finance/compliance"
-
     async def evaluate_rules_opa(self, transaction: dict) -> list[dict]:
         """Evaluate rule-based policies using Open Policy Agent (OPA)."""
         import httpx
+        opa_url = f"{settings.OPA_URL}/compliance"
         opa_input = {
             "input": {
                 "amount": float(transaction.get("amount") or 0),
@@ -117,7 +117,7 @@ class ComplianceAgent:
         }
         try:
             async with httpx.AsyncClient() as client:
-                resp = await client.post(self.OPA_URL, json=opa_input, timeout=5.0)
+                resp = await client.post(opa_url, json=opa_input, timeout=5.0)
                 if resp.status_code == 200:
                     opa_data = resp.json().get("result", {})
                     if not opa_data.get("allow", False):

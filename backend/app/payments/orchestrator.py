@@ -20,6 +20,7 @@ from app.payments.stripe_provider import stripe_provider
 from app.payments.razorpayx_provider import razorpayx_provider
 from app.payments.razorpay_route_provider import RazorpayRouteProvider
 from app.core.redis_client import cache
+from app.core.vendor_utils import update_vendor_spend
 
 razorpay_route_provider = RazorpayRouteProvider()
 
@@ -153,11 +154,17 @@ class PaymentOrchestrator:
                     invoice.status = "paid"
                     invoice.paid_at = datetime.utcnow()
 
-            # Update vendor total_paid
+            # Update vendor total_paid (normalized to org base currency)
             if payment.vendor_id:
                 vendor: Optional[Vendor] = await db.get(Vendor, payment.vendor_id)
                 if vendor:
-                    vendor.total_paid = float(vendor.total_paid or 0) + float(payment.amount)
+                    await update_vendor_spend(
+                        db=db,
+                        vendor=vendor,
+                        amount=float(payment.amount),
+                        currency=payment.currency,
+                        org_id=payment.org_id
+                    )
 
         await db.commit()
 

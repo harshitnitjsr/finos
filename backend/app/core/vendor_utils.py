@@ -11,7 +11,10 @@ Dedup strategy (in priority order):
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from loguru import logger
-from app.models.models import Vendor
+from decimal import Decimal
+from datetime import datetime
+from app.models.models import Vendor, Organization
+from app.core.fx import fx_service
 
 
 async def find_or_create_vendor(
@@ -150,3 +153,36 @@ def _merge_details(vendor: Vendor, *, email: str | None, category: str | None, w
         if not meta.get("website"):
             meta["website"] = website
             vendor.extra_metadata = meta
+
+
+async def update_vendor_spend(
+    db: AsyncSession,
+    vendor: Vendor,
+    amount: float,
+    currency: str,
+    org_id: str,
+):
+    """
+    Increment vendor total_paid, normalized to organization's base currency.
+    Ensures 'payment_currency' column matches the org base.
+    """
+    # 1. Resolve org base currency
+    org = await db.get(Organization, org_id)
+    base_currency = org.default_currency if org else "USD"
+
+    # 2. Convert payment amount to base
+    rates = await fx_service.get_rates(base_currency)
+    amt_base = fx_service.convert(amount, currency, base_currency, rates)
+
+    # 3. Update vendor (Numeric column expects Decimal)
+    current_total = float(vendor.total_paid or 0)
+    new_total = round(current_total + amt_base, 2)
+    vendor.total_paid = Decimal(str(new_total))
+    vendor.payment_currency = base_currency
+    vendor.updated_at = datetime.utcnow()
+
+    logger.info(
+        f"[update_vendor_spend] Vendor '{vendor.name}' total updated: "
+        f"{current_total} -> {new_total} {base_currency} "
+        f"(from {amount} {currency})"
+    )

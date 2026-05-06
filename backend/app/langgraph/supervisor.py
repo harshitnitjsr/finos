@@ -26,6 +26,35 @@ from app.langgraph.state import AFOSState
 from app.langgraph.tool_logger import call_tool_with_logging
 from app.core.config import settings
 
+
+# ── DO Tier 1 free model constants ───────────────────────────────────────────
+# Llama 3.3 70B: best free DO-hosted model — supports tool calling + streaming
+_DO_CHAT_MODEL = "llama3.3-70b-instruct"
+_DO_EMBED_MODEL = "bge-m3"
+
+
+def _make_llm(model: str, temperature: float = 0) -> ChatOpenAI:
+    """
+    Returns ChatOpenAI pointed at DO Inference Hub when DO_INFERENCE_API_KEY is set.
+    On DO Tier 1 (no OpenAI/Anthropic): uses llama3.3-70b-instruct (free, tool-calling capable).
+    Falls back to OpenAI direct when DO key is absent.
+    """
+    if settings.DO_INFERENCE_API_KEY:
+        logger.info(f"Using DO: True  | model: {_DO_CHAT_MODEL} (free, Tier 1)")
+        return ChatOpenAI(
+            model=_DO_CHAT_MODEL,
+            api_key=settings.DO_INFERENCE_API_KEY,
+            base_url=settings.DO_INFERENCE_BASE_URL,
+            temperature=temperature,
+        )
+    logger.info(f"Using DO: False | model: {model} -> OpenAI direct")
+    return ChatOpenAI(
+        model=model,
+        api_key=settings.OPENAI_API_KEY,
+        temperature=temperature,
+    )
+
+
 # ── Tool imports ──────────────────────────────────────────────────────────────
 from app.tools.expense_tools import EXPENSE_TOOLS
 from app.tools.invoice_tools import INVOICE_TOOLS
@@ -156,7 +185,7 @@ async def classify_intent_node(state: AFOSState) -> dict:
     messages = state["messages"]
     user_msg = next((m.content for m in reversed(messages) if isinstance(m, HumanMessage)), "")
 
-    llm = ChatOpenAI(model="gpt-4o-mini", api_key=settings.OPENAI_API_KEY, temperature=0)
+    llm = _make_llm("gpt-4o-mini", temperature=0)
     response = await llm.ainvoke([
         SystemMessage(content=CLASSIFY_PROMPT),
         HumanMessage(content=user_msg),
@@ -216,12 +245,8 @@ def make_agent_node(agent_key: str):
         raw_tools = cfg["tools"]
         tool_map = {t.name: t for t in raw_tools}
 
-        # LLM with tool schema bound for OpenAI function calling
-        llm = ChatOpenAI(
-            model="gpt-4o",
-            api_key=settings.OPENAI_API_KEY,
-            temperature=0.3,
-        ).bind_tools(raw_tools)
+        # LLM with tool schema bound - routed via DO Inference Hub when key is set
+        llm = _make_llm("gpt-4o", temperature=0.3).bind_tools(raw_tools)
 
         system_text = cfg["system"]
 

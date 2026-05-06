@@ -13,7 +13,7 @@ SSE event types emitted (newline-delimited, each prefixed with "data: "):
   {"type": "error",     "message": "..."}
 
 Design notes:
-- classify_intent uses gpt-4o-mini (fast, not streamed — usually <200ms)
+- classify_intent uses llama3.3-70b-instruct on DO Tier 1 (gpt-4o-mini when OpenAI direct)
 - Agent tool-calls are NOT streamed (they hit live DB; emit a tool_call event each)
 - Only the FINAL LLM response (synthesis turn after all tools complete) is streamed
 - Everything after streaming ends is saved via memory_service.save_turn() as normal
@@ -29,8 +29,9 @@ from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, Tool
 from langchain_openai import ChatOpenAI
 from loguru import logger
 
-from app.langgraph.supervisor import AGENT_REGISTRY, INTENT_TO_AGENT, CLASSIFY_PROMPT
+from app.langgraph.supervisor import AGENT_REGISTRY, INTENT_TO_AGENT, CLASSIFY_PROMPT, _make_llm
 from app.core.config import settings
+from app.core.prompt_guard import scan as guard_scan, wrap_user_message, sanitise_tool_output, build_hardened_system_prompt
 from app.langgraph.tool_logger import call_tool_with_logging
 from app.core.redis_client import cache as _cache
 
@@ -59,16 +60,22 @@ async def stream_agent_response(
     start = time.time()
     total_tokens = 0
 
+    # ── 0. Prompt injection guard on raw user message ────────────────────────
+    guard_result = guard_scan(message)
+    if guard_result.flagged:
+        logger.warning(
+            f"PromptGuard: threats={guard_result.threats} org={org_id} "
+            f"session={session_id} msg_preview={message[:80]!r}"
+        )
+    # Use sanitised text for all LLM calls; wrap in XML tags to enforce boundary
+    safe_message = wrap_user_message(guard_result.text)
+
     # ── 1. Classify intent (non-streamed, fast) ──────────────────────────────
     try:
-        classifier_llm = ChatOpenAI(
-            model="gpt-4o-mini",
-            api_key=settings.OPENAI_API_KEY,
-            temperature=0,
-        )
+        classifier_llm = _make_llm("gpt-4o-mini", temperature=0)
         classification = await classifier_llm.ainvoke([
             SystemMessage(content=CLASSIFY_PROMPT),
-            HumanMessage(content=message),
+            HumanMessage(content=safe_message),
         ])
         intent = classification.content.strip().lower()
         if intent not in INTENT_TO_AGENT:
@@ -101,29 +108,22 @@ async def stream_agent_response(
     raw_tools = cfg["tools"]
     tool_map = {t.name: t for t in raw_tools}
 
-    system_text = cfg["system"]
+    # Harden system prompt with injection-resistance preamble
+    system_text = build_hardened_system_prompt(cfg["system"])
     if memory_context:
         system_text = f"{system_text}\n\n{memory_context}"
 
     system = SystemMessage(content=system_text)
-    conversation = [system] + list(lc_history) + [HumanMessage(content=message)]
+    conversation = [system] + list(lc_history) + [HumanMessage(content=safe_message)]
 
     tool_call_records: list[dict] = []
     final_text = ""
 
-    # LLM for tool-calling turns (non-streamed)
-    tool_llm = ChatOpenAI(
-        model="gpt-4o",
-        api_key=settings.OPENAI_API_KEY,
-        temperature=0.3,
-    ).bind_tools(raw_tools)
+    # LLM for tool-calling turns - routed via DO Inference Hub when key is set
+    tool_llm = _make_llm("gpt-4o", temperature=0.3).bind_tools(raw_tools)
 
-    # LLM for final synthesis (streamed, no tools bound)
-    stream_llm = ChatOpenAI(
-        model="gpt-4o",
-        api_key=settings.OPENAI_API_KEY,
-        temperature=0.3,
-    )
+    # LLM for final streaming synthesis - routed via DO Inference Hub
+    stream_llm = _make_llm("gpt-4o", temperature=0.3)
 
     # ── 3. Agentic tool-calling loop (non-streamed) ───────────────────────────
     MAX_TURNS = 6
@@ -178,7 +178,9 @@ async def stream_agent_response(
                             run_id=run_id,
                             org_id=org_id,
                         )
-                        tool_result_content = json.dumps(raw_result, default=str)[:4000]
+                        raw_str = json.dumps(raw_result, default=str)[:4000]
+                        # Sanitise tool output (indirect injection from DB/OCR data)
+                        tool_result_content = sanitise_tool_output(tool_name, raw_str)
                     except Exception as exc:
                         tool_result_content = f"Tool error: {exc}"
                         logger.error(f"Streaming tool {tool_name} failed: {exc}")

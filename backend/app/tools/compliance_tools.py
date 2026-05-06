@@ -96,7 +96,8 @@ async def evaluate_policy_rules(
     """
     import httpx
     
-    opa_url = "http://localhost:8181/v1/data/finance/evaluate"
+    from app.core.config import settings
+    opa_url = f"{settings.OPA_URL}/evaluate"
     
     input_data = {
         "input": {

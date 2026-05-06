@@ -44,12 +44,29 @@ class CompletionResult:
 
 
 class ModelRouter:
-    """Routes AI tasks to the most appropriate and cost-efficient model."""
+    """Routes AI tasks to DO Inference Hub (DO credits) or OpenAI direct."""
 
     def __init__(self):
-        self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        if settings.DO_INFERENCE_API_KEY:
+            self.client = AsyncOpenAI(
+                api_key=settings.DO_INFERENCE_API_KEY,
+                base_url=settings.DO_INFERENCE_BASE_URL,
+            )
+            self._using_do = True
+            logger.info("ModelRouter: Using DO: True -> DigitalOcean Inference Hub")
+        else:
+            self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+            self._using_do = False
+            logger.info("ModelRouter: Using DO: False -> OpenAI direct")
 
     def get_model(self, task: ModelTask) -> str:
+        """Return correct model slug for the active provider.
+        DO Tier 1: free open-source models only (no OpenAI/Anthropic).
+        """
+        if self._using_do:
+            if task == ModelTask.EMBEDDING:
+                return "bge-m3"                      # DO-hosted embedding model
+            return "llama3.3-70b-instruct"           # Best free DO chat model (tool-calling capable)
         return MODEL_MAP.get(task, settings.MODEL_ROUTER_REASONING)
 
     async def complete_with_usage(

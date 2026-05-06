@@ -314,17 +314,20 @@ async def create_subscription(
         logger.error(f"Razorpay subscription create failed: {e}")
         raise HTTPException(status_code=502, detail=f"Razorpay error: {e}")
 
-    # Save pending subscription ID and billing currency
+    # Save pending subscription — plan_id stays as FREE until payment confirmed
+    # Plan is activated in /verify (after HMAC check) or subscription.activated webhook
     sub.razorpay_subscription_id = rz_sub["id"]
-    sub.plan_id          = plan.id  # switch plan (activated on webhook)
     sub.billing_currency = billing_currency
     sub.updated_at       = datetime.utcnow()
     await db.commit()
 
+    # Store pending plan slug in Redis (24h) so verify/webhook can activate it
+    await cache.set("subscriptions", plan.slug, 86400, f"pending_plan:{rz_sub['id']}")
+
     # Bust cache
     await cache.invalidate_pattern(f"subscriptions:sub:{org_id}")
 
-    logger.info(f"Created Razorpay subscription {rz_sub['id']} for org {org_id} plan {plan.slug}")
+    logger.info(f"Created Razorpay subscription {rz_sub['id']} for org {org_id} plan {plan.slug} (PENDING payment)")
 
     return {
         "razorpay_subscription_id": rz_sub["id"],
@@ -372,6 +375,19 @@ async def verify_subscription_payment(
     sub = result.scalar_one_or_none()
     if not sub:
         raise HTTPException(status_code=404, detail="Subscription not found.")
+
+    # Activate plan — look up from Redis pending store
+    pending_slug = await cache.get("subscriptions", f"pending_plan:{body.razorpay_subscription_id}")
+    if pending_slug:
+        plan_result = await db.execute(
+            select(SubscriptionPlan)
+            .where(SubscriptionPlan.slug == pending_slug, SubscriptionPlan.is_active == True)  # noqa: E712
+            .limit(1)
+        )
+        paid_plan = plan_result.scalar_one_or_none()
+        if paid_plan:
+            sub.plan_id = paid_plan.id
+            logger.info(f"Verify: activated plan '{pending_slug}' for org {org_id}")
 
     sub.status = SubscriptionStatus.ACTIVE
     sub.updated_at = datetime.utcnow()
@@ -469,6 +485,19 @@ async def razorpay_subscription_webhook(
     sub.webhook_events = events_log[-20:]
 
     if event_type == "subscription.activated":
+        # Look up pending plan from notes (set at /create time)
+        notes = sub_entity.get("notes", {})
+        plan_slug = notes.get("plan_slug") if isinstance(notes, dict) else None
+        if plan_slug:
+            plan_result = await db.execute(
+                select(SubscriptionPlan)
+                .where(SubscriptionPlan.slug == plan_slug, SubscriptionPlan.is_active == True)  # noqa: E712
+                .limit(1)
+            )
+            paid_plan = plan_result.scalar_one_or_none()
+            if paid_plan:
+                sub.plan_id = paid_plan.id
+                logger.info(f"Webhook: activated plan '{plan_slug}' for org {sub.org_id}")
         sub.status = SubscriptionStatus.ACTIVE
         logger.info(f"Subscription {rz_sub_id} activated for org {sub.org_id}")
 

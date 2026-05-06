@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     
     # Qdrant
     QDRANT_URL: str = "http://localhost:6333"
+    QDRANT_API_KEY: Optional[str] = None
+    
+    # OPA (Open Policy Agent)
+    OPA_URL: str = "http://localhost:8181/v1/data/finance"
     
     # Temporal
     TEMPORAL_HOST: str = "localhost:7233"
@@ -62,14 +66,16 @@ class Settings(BaseSettings):
     # Payment system
     PAYMENT_BASE_URL: str = "http://localhost:8000"  # For webhook registration
     
-    # Model Router — plain model names (DO prefix added automatically at runtime)
-    # When DO_INFERENCE_API_KEY is set, 'gpt-4o' becomes 'openai-gpt-4o' automatically.
-    MODEL_ROUTER_REASONING: str = "gpt-4o"
-    MODEL_ROUTER_EXTRACTION: str = "gpt-4o-mini"
-    MODEL_ROUTER_CLASSIFICATION: str = "gpt-4o-mini"
-    MODEL_ROUTER_EMBEDDING: str = "text-embedding-3-small"   # DO maps to bge-m3
-    MODEL_ROUTER_FORECAST: str = "gpt-4o"
-    MODEL_ROUTER_COMPLIANCE: str = "gpt-4o"
+    # Model Router — OpenAI names used when DO key is NOT set (direct OpenAI billing)
+    # When DO_INFERENCE_API_KEY is set, model_router.py overrides these with:
+    #   chat tasks  → llama3.3-70b-instruct  (free, DO Tier 1, tool-calling capable)
+    #   embeddings  → bge-m3                 (free, DO Tier 1, 1024-dim)
+    MODEL_ROUTER_REASONING: str = "llama3.3-70b-instruct"
+    MODEL_ROUTER_EXTRACTION: str = "llama3.3-70b-instruct"
+    MODEL_ROUTER_CLASSIFICATION: str = "llama3.3-70b-instruct"
+    MODEL_ROUTER_EMBEDDING: str = "bge-m3"
+    MODEL_ROUTER_FORECAST: str = "llama3.3-70b-instruct"
+    MODEL_ROUTER_COMPLIANCE: str = "llama3.3-70b-instruct"
     
     # Auth — internal proxy secret (must match BACKEND_API_SECRET in Next.js .env.local)
     # Generate with: python -c "import secrets; print(secrets.token_hex(32))"

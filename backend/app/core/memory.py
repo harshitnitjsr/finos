@@ -21,15 +21,24 @@ from loguru import logger
 # ── Embedding helper ──────────────────────────────────────────────────────────
 
 async def _embed(text: str) -> list[float] | None:
-    """Embed text using OpenAI text-embedding-3-small. Returns None on failure."""
+    """
+    Embed text for semantic memory (Qdrant).
+    Uses DO Inference Hub (bge-m3) when DO_INFERENCE_API_KEY is set,
+    otherwise falls back to OpenAI text-embedding-3-small.
+    """
     try:
         from openai import AsyncOpenAI
         from app.core.config import settings
-        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-        resp = await client.embeddings.create(
-            input=text[:8000],
-            model="text-embedding-3-small",
-        )
+        if settings.DO_INFERENCE_API_KEY:
+            client = AsyncOpenAI(
+                api_key=settings.DO_INFERENCE_API_KEY,
+                base_url=settings.DO_INFERENCE_BASE_URL,
+            )
+            model = "bge-m3"
+        else:
+            client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+            model = "text-embedding-3-small"
+        resp = await client.embeddings.create(input=text[:8000], model=model)
         return resp.data[0].embedding
     except Exception as e:
         logger.warning(f"Memory embed failed: {e}")

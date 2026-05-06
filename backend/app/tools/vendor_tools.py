@@ -46,8 +46,14 @@ async def query_vendors(risk_level: Optional[str] = None, category: Optional[str
         result = await db.execute(q)
         vendors = result.scalars().all()
 
+        # Get org base currency
+        from app.models.models import Organization
+        org = await db.get(Organization, ORG_ID)
+        base_currency = org.default_currency if org else "USD"
+
         return {
             "count": len(vendors),
+            "base_currency": base_currency,
             "vendors": [
                 {
                     "id": v.id,
@@ -140,9 +146,15 @@ async def get_high_risk_vendors(min_risk_score: float = 50.0) -> dict:
         )
         unverified = unverified_result.scalars().all()
 
+        # Get org base currency
+        from app.models.models import Organization
+        org = await db.get(Organization, ORG_ID)
+        base_currency = org.default_currency if org else "USD"
+
         return {
             "high_risk_count": len(vendors),
             "unverified_high_value_count": len(unverified),
+            "base_currency": base_currency,
             "high_risk_vendors": [
                 {"name": v.name, "risk_score": float(v.risk_score or 0), "risk_level": v.risk_level, "total_paid": float(v.total_paid or 0), "is_verified": v.is_verified}
                 for v in vendors
