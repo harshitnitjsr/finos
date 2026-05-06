@@ -1,269 +1,295 @@
-# ─────────────────────────────────────────────────────────────────────────────
-# AFOS — Final Production-Ready Cloud App Specification
-# ─────────────────────────────────────────────────────────────────────────────
-
 name: afos-production
-region: nyc
+region: nyc1
+
 services:
   - name: backend
+
+    github:
+      branch: main
+      deploy_on_push: true
+
     instance_count: 1
     instance_size_slug: basic-xs
+
     source_dir: backend
     dockerfile_path: Dockerfile
+
     http_port: 8000
+
     routes:
       - path: /
+
     envs:
       # --- Infrastructure ---
       - key: DATABASE_URL
         scope: RUN_TIME
-        value: $DATABASE_URL
+        value: ${DATABASE_URL}
+
       - key: ASYNC_DATABASE_URL
         scope: RUN_TIME
-        value: $ASYNC_DATABASE_URL
+        value: ${ASYNC_DATABASE_URL}
+
       - key: REDIS_URL
         scope: RUN_TIME
-        value: $REDIS_URL
+        value: ${REDIS_URL}
+
       - key: QDRANT_URL
         scope: RUN_TIME
-        value: $QDRANT_URL
+        value: ${QDRANT_URL}
+
       - key: QDRANT_API_KEY
         scope: RUN_TIME
-        value: $QDRANT_API_KEY
+        value: ${QDRANT_API_KEY}
+
       - key: TEMPORAL_HOST
         scope: RUN_TIME
-        value: $TEMPORAL_HOST
+        value: ${TEMPORAL_HOST}
+
       - key: TEMPORAL_NAMESPACE
         scope: RUN_TIME
-        value: $TEMPORAL_NAMESPACE
+        value: ${TEMPORAL_NAMESPACE}
+
       - key: TEMPORAL_TASK_QUEUE
         scope: RUN_TIME
-        value: $TEMPORAL_TASK_QUEUE
+        value: ${TEMPORAL_TASK_QUEUE}
+
       - key: OPA_URL
         scope: RUN_TIME
-        value: $OPA_URL
+        value: ${OPA_URL}
 
       # --- App Secrets ---
       - key: APP_SECRET_KEY
         scope: RUN_TIME
-        value: $APP_SECRET_KEY
+        value: ${APP_SECRET_KEY}
+
       - key: BACKEND_API_SECRET
         scope: RUN_TIME
-        value: $BACKEND_API_SECRET
+        value: ${BACKEND_API_SECRET}
+
       - key: APP_BASE_URL
         scope: RUN_TIME
-        value: $APP_BASE_URL
+        value: ${APP_BASE_URL}
+
       - key: NEXTJS_ORIGIN
         scope: RUN_TIME
-        value: $NEXTJS_ORIGIN
-      
+        value: ${NEXTJS_ORIGIN}
+
       # --- Settings ---
       - key: ENVIRONMENT
         scope: RUN_TIME
         value: production
+
       - key: LOG_LEVEL
         scope: RUN_TIME
         value: INFO
+
       - key: STORAGE_TYPE
         scope: RUN_TIME
-        value: $STORAGE_TYPE
-      
+        value: ${STORAGE_TYPE}
+
       # --- AI Models ---
       - key: DO_INFERENCE_API_KEY
         scope: RUN_TIME
-        value: $DO_INFERENCE_API_KEY
+        value: ${DO_INFERENCE_API_KEY}
+
       - key: OPENAI_API_KEY
         scope: RUN_TIME
-        value: $OPENAI_API_KEY
+        value: ${OPENAI_API_KEY}
+
       - key: MODEL_ROUTER_REASONING
         scope: RUN_TIME
-        value: $MODEL_ROUTER_REASONING
+        value: ${MODEL_ROUTER_REASONING}
+
       - key: MODEL_ROUTER_EXTRACTION
         scope: RUN_TIME
-        value: $MODEL_ROUTER_EXTRACTION
+        value: ${MODEL_ROUTER_EXTRACTION}
+
       - key: MODEL_ROUTER_CLASSIFICATION
         scope: RUN_TIME
-        value: $MODEL_ROUTER_CLASSIFICATION
+        value: ${MODEL_ROUTER_CLASSIFICATION}
+
       - key: MODEL_ROUTER_EMBEDDING
         scope: RUN_TIME
-        value: $MODEL_ROUTER_EMBEDDING
+        value: ${MODEL_ROUTER_EMBEDDING}
+
       - key: MODEL_ROUTER_FORECAST
         scope: RUN_TIME
-        value: $MODEL_ROUTER_FORECAST
+        value: ${MODEL_ROUTER_FORECAST}
+
       - key: MODEL_ROUTER_COMPLIANCE
         scope: RUN_TIME
-        value: $MODEL_ROUTER_COMPLIANCE
+        value: ${MODEL_ROUTER_COMPLIANCE}
 
       # --- Razorpay ---
       - key: RAZORPAY_KEY_ID
         scope: RUN_TIME
-        value: $RAZORPAY_KEY_ID
+        value: ${RAZORPAY_KEY_ID}
+
       - key: RAZORPAY_KEY_SECRET
         scope: RUN_TIME
-        value: $RAZORPAY_KEY_SECRET
+        value: ${RAZORPAY_KEY_SECRET}
+
       - key: RAZORPAYX_ACCOUNT_NUMBER
         scope: RUN_TIME
-        value: $RAZORPAYX_ACCOUNT_NUMBER
+        value: ${RAZORPAYX_ACCOUNT_NUMBER}
+
       - key: RAZORPAY_WEBHOOK_SECRET
         scope: RUN_TIME
-        value: $RAZORPAY_WEBHOOK_SECRET
+        value: ${RAZORPAY_WEBHOOK_SECRET}
+
       - key: RAZORPAY_PLAN_ID_STARTER
         scope: RUN_TIME
-        value: $RAZORPAY_PLAN_ID_STARTER
+        value: ${RAZORPAY_PLAN_ID_STARTER}
+
       - key: RAZORPAY_PLAN_ID_PRO
         scope: RUN_TIME
-        value: $RAZORPAY_PLAN_ID_PRO
+        value: ${RAZORPAY_PLAN_ID_PRO}
+
       - key: RAZORPAY_PLAN_ID_ENTERPRISE
         scope: RUN_TIME
-        value: $RAZORPAY_PLAN_ID_ENTERPRISE
+        value: ${RAZORPAY_PLAN_ID_ENTERPRISE}
+
       - key: RAZORPAY_PLAN_ID_STARTER_USD
         scope: RUN_TIME
-        value: $RAZORPAY_PLAN_ID_STARTER_USD
+        value: ${RAZORPAY_PLAN_ID_STARTER_USD}
+
       - key: RAZORPAY_PLAN_ID_PRO_USD
         scope: RUN_TIME
-        value: $RAZORPAY_PLAN_ID_PRO_USD
+        value: ${RAZORPAY_PLAN_ID_PRO_USD}
+
       - key: RAZORPAY_PLAN_ID_ENTERPRISE_USD
         scope: RUN_TIME
-        value: $RAZORPAY_PLAN_ID_ENTERPRISE_USD
+        value: ${RAZORPAY_PLAN_ID_ENTERPRISE_USD}
 
       # --- Stripe ---
       - key: STRIPE_SECRET_KEY
         scope: RUN_TIME
-        value: $STRIPE_SECRET_KEY
+        value: ${STRIPE_SECRET_KEY}
+
       - key: STRIPE_PUBLISHABLE_KEY
         scope: RUN_TIME
-        value: $STRIPE_PUBLISHABLE_KEY
+        value: ${STRIPE_PUBLISHABLE_KEY}
+
       - key: STRIPE_WEBHOOK_SECRET
         scope: RUN_TIME
-        value: $STRIPE_WEBHOOK_SECRET
+        value: ${STRIPE_WEBHOOK_SECRET}
 
       # --- SMTP ---
       - key: SMTP_SERVER
         scope: RUN_TIME
-        value: $SMTP_SERVER
+        value: ${SMTP_SERVER}
+
       - key: SMTP_PORT
         scope: RUN_TIME
-        value: $SMTP_PORT
+        value: ${SMTP_PORT}
+
       - key: SMTP_USERNAME
         scope: RUN_TIME
-        value: $SMTP_USERNAME
+        value: ${SMTP_USERNAME}
+
       - key: SMTP_PASSWORD
         scope: RUN_TIME
-        value: $SMTP_PASSWORD
+        value: ${SMTP_PASSWORD}
+
       - key: SMTP_FROM_EMAIL
         scope: RUN_TIME
-        value: $SMTP_FROM_EMAIL
+        value: ${SMTP_FROM_EMAIL}
 
       # --- AWS ---
       - key: AWS_ACCESS_KEY_ID
         scope: RUN_TIME
-        value: $AWS_ACCESS_KEY_ID
+        value: ${AWS_ACCESS_KEY_ID}
+
       - key: AWS_SECRET_ACCESS_KEY
         scope: RUN_TIME
-        value: $AWS_SECRET_ACCESS_KEY
+        value: ${AWS_SECRET_ACCESS_KEY}
+
       - key: AWS_REGION
         scope: RUN_TIME
-        value: $AWS_REGION
+        value: ${AWS_REGION}
 
       # --- Business ---
       - key: PLATFORM_COMMISSION_PERCENT
         scope: RUN_TIME
-        value: $PLATFORM_COMMISSION_PERCENT
+        value: ${PLATFORM_COMMISSION_PERCENT}
 
   - name: temporal-worker
+
+    github:
+      branch: main
+      deploy_on_push: true
+
     instance_count: 1
     instance_size_slug: basic-xs
+
     source_dir: backend
     dockerfile_path: Dockerfile
+
     run_command: python temporal_worker.py
+
     envs:
-      # --- Full Environment Synchronization for Activities ---
       - key: DATABASE_URL
         scope: RUN_TIME
-        value: $DATABASE_URL
+        value: ${DATABASE_URL}
+
       - key: ASYNC_DATABASE_URL
         scope: RUN_TIME
-        value: $ASYNC_DATABASE_URL
+        value: ${ASYNC_DATABASE_URL}
+
       - key: REDIS_URL
         scope: RUN_TIME
-        value: $REDIS_URL
+        value: ${REDIS_URL}
+
       - key: QDRANT_URL
         scope: RUN_TIME
-        value: $QDRANT_URL
+        value: ${QDRANT_URL}
+
       - key: QDRANT_API_KEY
         scope: RUN_TIME
-        value: $QDRANT_API_KEY
+        value: ${QDRANT_API_KEY}
+
       - key: TEMPORAL_HOST
         scope: RUN_TIME
-        value: $TEMPORAL_HOST
+        value: ${TEMPORAL_HOST}
+
       - key: TEMPORAL_NAMESPACE
         scope: RUN_TIME
-        value: $TEMPORAL_NAMESPACE
+        value: ${TEMPORAL_NAMESPACE}
+
       - key: TEMPORAL_TASK_QUEUE
         scope: RUN_TIME
-        value: $TEMPORAL_TASK_QUEUE
+        value: ${TEMPORAL_TASK_QUEUE}
+
       - key: OPA_URL
         scope: RUN_TIME
-        value: $OPA_URL
+        value: ${OPA_URL}
+
       - key: APP_SECRET_KEY
         scope: RUN_TIME
-        value: $APP_SECRET_KEY
+        value: ${APP_SECRET_KEY}
+
       - key: BACKEND_API_SECRET
         scope: RUN_TIME
-        value: $BACKEND_API_SECRET
+        value: ${BACKEND_API_SECRET}
+
       - key: DO_INFERENCE_API_KEY
         scope: RUN_TIME
-        value: $DO_INFERENCE_API_KEY
+        value: ${DO_INFERENCE_API_KEY}
+
       - key: OPENAI_API_KEY
         scope: RUN_TIME
-        value: $OPENAI_API_KEY
-      - key: MODEL_ROUTER_REASONING
-        scope: RUN_TIME
-        value: $MODEL_ROUTER_REASONING
-      - key: MODEL_ROUTER_EXTRACTION
-        scope: RUN_TIME
-        value: $MODEL_ROUTER_EXTRACTION
-      - key: MODEL_ROUTER_CLASSIFICATION
-        scope: RUN_TIME
-        value: $MODEL_ROUTER_CLASSIFICATION
-      - key: MODEL_ROUTER_EMBEDDING
-        scope: RUN_TIME
-        value: $MODEL_ROUTER_EMBEDDING
-      - key: MODEL_ROUTER_FORECAST
-        scope: RUN_TIME
-        value: $MODEL_ROUTER_FORECAST
-      - key: MODEL_ROUTER_COMPLIANCE
-        scope: RUN_TIME
-        value: $MODEL_ROUTER_COMPLIANCE
-      - key: RAZORPAY_KEY_ID
-        scope: RUN_TIME
-        value: $RAZORPAY_KEY_ID
-      - key: RAZORPAY_KEY_SECRET
-        scope: RUN_TIME
-        value: $RAZORPAY_KEY_SECRET
-      - key: STRIPE_SECRET_KEY
-        scope: RUN_TIME
-        value: $STRIPE_SECRET_KEY
-      - key: SMTP_SERVER
-        scope: RUN_TIME
-        value: $SMTP_SERVER
-      - key: SMTP_PORT
-        scope: RUN_TIME
-        value: $SMTP_PORT
-      - key: SMTP_USERNAME
-        scope: RUN_TIME
-        value: $SMTP_USERNAME
-      - key: SMTP_PASSWORD
-        scope: RUN_TIME
-        value: $SMTP_PASSWORD
-      - key: SMTP_FROM_EMAIL
-        scope: RUN_TIME
-        value: $SMTP_FROM_EMAIL
+        value: ${OPENAI_API_KEY}
 
   - name: opa
+
+    github:
+      branch: main
+      deploy_on_push: true
+
     instance_count: 1
     instance_size_slug: basic-xxs
+
     source_dir: backend
     dockerfile_path: Dockerfile.opa
-    internal_ports:
-      - 8181
+
+    http_port: 8181
