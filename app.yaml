@@ -5,16 +5,17 @@ services:
   - name: backend
 
     github:
+      repo: harshitnitjsr/finos
       branch: main
       deploy_on_push: true
-
-    instance_count: 1
-    instance_size_slug: basic-xs
 
     source_dir: backend
     dockerfile_path: Dockerfile
 
     http_port: 8000
+
+    instance_count: 1
+    instance_size_slug: basic-xs
 
     routes:
       - path: /
@@ -213,19 +214,21 @@ services:
         scope: RUN_TIME
         value: ${PLATFORM_COMMISSION_PERCENT}
 
+workers:
   - name: temporal-worker
 
     github:
+      repo: harshitnitjsr/finos
       branch: main
       deploy_on_push: true
-
-    instance_count: 1
-    instance_size_slug: basic-xs
 
     source_dir: backend
     dockerfile_path: Dockerfile
 
     run_command: python temporal_worker.py
+
+    instance_count: 1
+    instance_size_slug: basic-xs
 
     envs:
       - key: DATABASE_URL
@@ -283,13 +286,12 @@ services:
   - name: opa
 
     github:
+      repo: harshitnitjsr/finos
       branch: main
       deploy_on_push: true
-
-    instance_count: 1
-    instance_size_slug: basic-xxs
 
     source_dir: backend
     dockerfile_path: Dockerfile.opa
 
-    http_port: 8181
+    instance_count: 1
+    instance_size_slug: basic-xxs
