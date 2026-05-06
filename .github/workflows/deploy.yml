@@ -1,0 +1,138 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# AFOS — Comprehensive CD Pipeline
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: CD - Deploy to DigitalOcean
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Run Backend Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: afos
+          POSTGRES_PASSWORD: afos_password
+          POSTGRES_DB: afos_db
+        ports:
+          - 5432:5432
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        working-directory: ./backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Tests
+        working-directory: ./backend
+        env:
+          DATABASE_URL: postgresql://afos:afos_password@localhost:5432/afos_db
+          ASYNC_DATABASE_URL: postgresql+asyncpg://afos:afos_password@localhost:5432/afos_db
+          REDIS_URL: redis://localhost:6379
+          BACKEND_API_SECRET: test_secret
+        run: |
+          python -m pytest test_prompt_guard.py
+
+  deploy:
+    name: Deploy to App Platform
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Deploy App
+        env:
+          # Infrastructure
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ASYNC_DATABASE_URL: ${{ secrets.ASYNC_DATABASE_URL }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          QDRANT_URL: ${{ secrets.QDRANT_URL }}
+          QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
+          TEMPORAL_HOST: ${{ secrets.TEMPORAL_HOST }}
+          TEMPORAL_NAMESPACE: ${{ secrets.TEMPORAL_NAMESPACE }}
+          TEMPORAL_TASK_QUEUE: ${{ secrets.TEMPORAL_TASK_QUEUE }}
+          OPA_URL: ${{ secrets.OPA_URL }}
+
+          # App Secrets
+          APP_SECRET_KEY: ${{ secrets.APP_SECRET_KEY }}
+          BACKEND_API_SECRET: ${{ secrets.BACKEND_API_SECRET }}
+          APP_BASE_URL: ${{ secrets.APP_BASE_URL }}
+          NEXTJS_ORIGIN: ${{ secrets.NEXTJS_ORIGIN }}
+          STORAGE_TYPE: ${{ secrets.STORAGE_TYPE }}
+
+          # AI Models
+          DO_INFERENCE_API_KEY: ${{ secrets.DO_INFERENCE_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          MODEL_ROUTER_REASONING: ${{ secrets.MODEL_ROUTER_REASONING }}
+          MODEL_ROUTER_EXTRACTION: ${{ secrets.MODEL_ROUTER_EXTRACTION }}
+          MODEL_ROUTER_CLASSIFICATION: ${{ secrets.MODEL_ROUTER_CLASSIFICATION }}
+          MODEL_ROUTER_EMBEDDING: ${{ secrets.MODEL_ROUTER_EMBEDDING }}
+          MODEL_ROUTER_FORECAST: ${{ secrets.MODEL_ROUTER_FORECAST }}
+          MODEL_ROUTER_COMPLIANCE: ${{ secrets.MODEL_ROUTER_COMPLIANCE }}
+
+          # Razorpay
+          RAZORPAY_KEY_ID: ${{ secrets.RAZORPAY_KEY_ID }}
+          RAZORPAY_KEY_SECRET: ${{ secrets.RAZORPAY_KEY_SECRET }}
+          RAZORPAYX_ACCOUNT_NUMBER: ${{ secrets.RAZORPAYX_ACCOUNT_NUMBER }}
+          RAZORPAY_WEBHOOK_SECRET: ${{ secrets.RAZORPAY_WEBHOOK_SECRET }}
+          RAZORPAY_PLAN_ID_STARTER: ${{ secrets.RAZORPAY_PLAN_ID_STARTER }}
+          RAZORPAY_PLAN_ID_PRO: ${{ secrets.RAZORPAY_PLAN_ID_PRO }}
+          RAZORPAY_PLAN_ID_ENTERPRISE: ${{ secrets.RAZORPAY_PLAN_ID_ENTERPRISE }}
+          RAZORPAY_PLAN_ID_STARTER_USD: ${{ secrets.RAZORPAY_PLAN_ID_STARTER_USD }}
+          RAZORPAY_PLAN_ID_PRO_USD: ${{ secrets.RAZORPAY_PLAN_ID_PRO_USD }}
+          RAZORPAY_PLAN_ID_ENTERPRISE_USD: ${{ secrets.RAZORPAY_PLAN_ID_ENTERPRISE_USD }}
+
+          # Stripe
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_PUBLISHABLE_KEY: ${{ secrets.STRIPE_PUBLISHABLE_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+
+          # SMTP
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_FROM_EMAIL: ${{ secrets.SMTP_FROM_EMAIL }}
+
+          # AWS
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+
+          # Business
+          PLATFORM_COMMISSION_PERCENT: ${{ secrets.PLATFORM_COMMISSION_PERCENT }}
+
+        run: |
+          # 1. Substitute environment variables in app.yaml
+          envsubst < app.yaml > app.processed.yaml
+          
+          # 2. Update DigitalOcean App with the processed spec
+          doctl apps update ${{ secrets.DO_APP_ID }} --spec app.processed.yaml

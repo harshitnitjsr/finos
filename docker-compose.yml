@@ -1,46 +1,28 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# AFOS — Cloud-Connected Docker Compose
+# ─────────────────────────────────────────────────────────────────────────────
+# This configuration assumes you are using external cloud services:
+# - PostgreSQL (Neon/Supabase)
+# - Redis (Upstash)
+# 
+# It only runs the logic (Backend) and secondary services (Qdrant, OPA).
+# ─────────────────────────────────────────────────────────────────────────────
+
 version: '3.8'
 
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: afos_postgres
-    environment:
-      POSTGRES_USER: afos
-      POSTGRES_PASSWORD: afos_password
-      POSTGRES_DB: afos_db
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: afos_backend
     ports:
-      - "5433:5432"
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    # Note: depends_on is removed as we depend on external cloud DBs
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U afos -d afos_db"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  redis:
-    image: redis:7-alpine
-    container_name: afos_redis
-    ports:
-      - "6380:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  qdrant:
-    image: qdrant/qdrant:latest
-    container_name: afos_qdrant
-    ports:
-      - "6335:6333"
-      - "6336:6334"
-    volumes:
-      - qdrant_data:/qdrant/storage
-    environment:
-      - QDRANT__SERVICE__HTTP_PORT=6333
+      - ./backend/uploads:/app/uploads
 
   opa:
     image: openpolicyagent/opa:latest
@@ -57,25 +39,15 @@ services:
     volumes:
       - ./policies:/policies
 
-  redis-commander:
-    image: rediscommander/redis-commander:latest
-    container_name: afos_redis_commander
-    environment:
-      - REDIS_HOSTS=local:redis:6379
-    ports:
-      - "8081:8081"
-    depends_on:
-      - redis
-
+  # UI tools for remote debugging
   adminer:
     image: adminer:latest
     container_name: afos_adminer
     ports:
       - "8082:8080"
-    depends_on:
-      - postgres
 
-volumes:
-  postgres_data:
-  redis_data:
-  qdrant_data:
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: afos_redis_commander
+    ports:
+      - "8081:8081"
