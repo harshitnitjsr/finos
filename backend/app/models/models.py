@@ -669,11 +669,13 @@ class SubscriptionPlan(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=True)
 
-    # Pricing (in INR paise for Razorpay, 0 for free)
-    price_monthly_inr: Mapped[int] = mapped_column(Integer, default=0)  # e.g. 99900 = ₹999
+    # Pricing — INR for Indian customers, USD for international (cents, e.g. 1200 = $12.00)
+    price_monthly_inr: Mapped[int] = mapped_column(Integer, default=0)   # e.g. 999 = ₹999
+    price_monthly_usd: Mapped[int] = mapped_column(Integer, default=0)   # e.g. 12 = $12
 
-    # Razorpay Plan ID (populated after plan is created in Razorpay dashboard)
-    razorpay_plan_id: Mapped[str] = mapped_column(String(100), nullable=True)
+    # Razorpay Plan IDs — one per currency (create in Razorpay Dashboard → Products → Plans)
+    razorpay_plan_id:     Mapped[str] = mapped_column(String(100), nullable=True)  # INR plan
+    razorpay_plan_id_usd: Mapped[str] = mapped_column(String(100), nullable=True)  # USD plan
 
     # Feature limits (-1 = unlimited)
     max_invoices_per_month: Mapped[int] = mapped_column(Integer, default=5)
@@ -706,7 +708,10 @@ class OrganizationSubscription(Base):
 
     # Razorpay identifiers
     razorpay_subscription_id: Mapped[str] = mapped_column(String(100), nullable=True, unique=True)
-    razorpay_customer_id: Mapped[str] = mapped_column(String(100), nullable=True)
+    razorpay_customer_id:     Mapped[str] = mapped_column(String(100), nullable=True)
+
+    # Currency used at checkout — "INR" (India) or "USD" (international)
+    billing_currency: Mapped[str] = mapped_column(String(10), default="INR", nullable=False)
 
     # Billing cycle dates
     current_period_start: Mapped[datetime] = mapped_column(DateTime, nullable=True)

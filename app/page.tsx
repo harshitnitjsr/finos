@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { motion, useScroll, useTransform, useSpring, useMotionValue } from "framer-motion";
+import { getPlans } from "@/lib/subscriptions";
 import { 
   ArrowRight, 
   BarChart3, 
@@ -136,6 +137,14 @@ export default function HomePage() {
     window.addEventListener("mousemove", handleMouseMove);
     return () => window.removeEventListener("mousemove", handleMouseMove);
   }, [xTilt, yTilt]);
+
+  // Detect billing currency from backend (IP-based, respects VPN)
+  const [landingCurrency, setLandingCurrency] = useState<"INR" | "USD">("INR");
+  useEffect(() => {
+    getPlans()
+      .then((res) => setLandingCurrency(res.detected_currency))
+      .catch(() => {}); // silent fail — stays INR
+  }, []);
 
   if (!mounted) return <div className="min-h-screen bg-[#020617]" />;
 
@@ -697,7 +706,9 @@ export default function HomePage() {
               </h2>
               <p className="max-w-2xl mx-auto text-xl text-white/30 font-bold leading-relaxed">
                 Start free — no credit card needed. Upgrade when you need more invoices or AI prompts.
-                Billing via <span className="text-white/50">Razorpay</span>
+                {landingCurrency === "USD" && (
+                  <span className="text-white/20"> Prices in USD.</span>
+                )}
               </p>
             </motion.div>
 
@@ -729,6 +740,7 @@ export default function HomePage() {
                   name: "Starter",
                   desc: "For small teams managing their finances.",
                   price: "₹999",
+                  priceUsd: "~$12",
                   period: "/mo",
                   highlight: false,
                   accentColor: "rgba(59,130,246,0.7)",
@@ -741,7 +753,7 @@ export default function HomePage() {
                     "Approval workflows",
                     "Vendor & analytics dashboard",
                   ],
-                  ctaLabel: "Upgrade with Razorpay",
+                  ctaLabel: "Get Started",
                   ctaHref: "/auth/signin",
                 },
                 {
@@ -750,6 +762,7 @@ export default function HomePage() {
                   name: "Pro",
                   desc: "For growing businesses with high invoice volume.",
                   price: "₹2,999",
+                  priceUsd: "~$36",
                   period: "/mo",
                   highlight: true,
                   accentColor: "rgba(139,92,246,0.8)",
@@ -760,7 +773,7 @@ export default function HomePage() {
                     "Everything in Starter",
                     "Priority support",
                   ],
-                  ctaLabel: "Upgrade with Razorpay",
+                  ctaLabel: "Get Started",
                   ctaHref: "/auth/signin",
                 },
                 {
@@ -769,6 +782,7 @@ export default function HomePage() {
                   name: "Enterprise",
                   desc: "Unlimited everything for large organisations.",
                   price: "₹7,999",
+                  priceUsd: "~$96",
                   period: "/mo",
                   highlight: false,
                   accentColor: "rgba(245,158,11,0.7)",
@@ -778,7 +792,7 @@ export default function HomePage() {
                     "Unlimited AI chat prompts",
                     "Everything in Pro",
                   ],
-                  ctaLabel: "Upgrade with Razorpay",
+                  ctaLabel: "Get Started",
                   ctaHref: "/auth/signin",
                 },
               ].map((plan, i) => (
@@ -818,13 +832,29 @@ export default function HomePage() {
                     <h3 className="text-2xl font-black uppercase tracking-tighter text-white mb-6">{plan.name}</h3>
 
                     <div className="flex items-baseline gap-1">
-                      <span className="text-4xl font-black tracking-tighter text-white">{plan.price}</span>
+                      <span className="text-4xl font-black tracking-tighter text-white">
+                        {/* Show INR or USD price based on backend-detected currency */}
+                        {plan.slug === "free"
+                          ? (landingCurrency === "INR" ? plan.price : "$0")
+                          : landingCurrency === "INR"
+                          ? plan.price
+                          : (plan as any).priceUsd ?? plan.price
+                        }
+                      </span>
                       {plan.period && (
                         <span className="text-sm text-white/30 font-bold">{plan.period}</span>
                       )}
                     </div>
                     {plan.period && (
-                      <p className="text-[10px] text-white/25 mt-1 font-bold">Billed monthly · </p>
+                      <p className="text-[10px] text-white/25 mt-1 font-bold">
+                        Billed monthly ·{" "}
+                        {landingCurrency === "INR" && (plan as any).priceUsd && (
+                          <span className="text-emerald-500/50">{(plan as any).priceUsd} USD</span>
+                        )}
+                        {landingCurrency === "USD" && plan.slug !== "free" && (
+                          <span className="text-emerald-500/50">{plan.price} INR</span>
+                        )}
+                      </p>
                     )}
                   </div>
 
@@ -861,7 +891,7 @@ export default function HomePage() {
                     </Link>
                     {plan.slug !== "free" && (
                       <p className="text-center text-[10px] mt-2 text-white/20 font-bold">
-                        🔒 Secured by Razorpay
+                        🔒 Secure checkout ·
                       </p>
                     )}
                   </div>
@@ -878,10 +908,10 @@ export default function HomePage() {
               className="mt-16 text-center space-y-2"
             >
               <p className="text-[10px] font-bold uppercase tracking-widest text-white/15">
-                g.
+                
               </p>
               <p className="text-[10px] font-bold text-white/15">
-                Payments are processed by <span className="text-white/30 font-semibold">Razorpay</span> — we never store your card details.
+                We never store your card details. All transactions are encrypted end-to-end.
               </p>
             </motion.div>
           </div>

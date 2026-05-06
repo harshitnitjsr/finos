@@ -24,11 +24,15 @@ declare global {
 const cv = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.08 } } };
 const iv = { hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0, transition: { duration: 0.35 } } };
 
-/* ── Plan metadata (no fake data — only real features that exist) ─────────── */
+/* Currency is detected server-side from the caller's real IP address.
+ * The backend returns detected_currency: "INR" | "USD" in the /plans response.
+ * This correctly handles VPN, proxies, and all network configurations. */
+
+/* ── Plan metadata ───────────────────────────────────────────────────────── */
 const PLAN_ICONS: Record<string, React.ElementType> = {
-  free: Sparkles,
-  starter: Zap,
-  pro: CheckCircle2,
+  free:       Sparkles,
+  starter:    Zap,
+  pro:        CheckCircle2,
   enterprise: Building2,
 };
 
@@ -46,10 +50,6 @@ const PLAN_GRADIENT: Record<string, string> = {
   enterprise: "rgba(245,158,11,0.08)",
 };
 
-/**
- * Features are ONLY real, implemented features in AFOS.
- * Free plan is honest: limited quota, full platform access during trial.
- */
 const PLAN_FEATURES: Record<string, string[]> = {
   free: [
     "5 invoice uploads — trial only",
@@ -78,12 +78,12 @@ const PLAN_FEATURES: Record<string, string[]> = {
   ],
 };
 
-/* ── Razorpay script loader ──────────────────────────────────────────────── */
-function loadRazorpayScript(): Promise<boolean> {
+/* ── Payment script loader ───────────────────────────────────────────────── */
+function loadCheckoutScript(): Promise<boolean> {
   return new Promise((resolve) => {
-    if (document.getElementById("razorpay-script")) { resolve(true); return; }
+    if (document.getElementById("checkout-script")) { resolve(true); return; }
     const script = document.createElement("script");
-    script.id = "razorpay-script";
+    script.id = "checkout-script";
     script.src = "https://checkout.razorpay.com/v1/checkout.js";
     script.onload = () => resolve(true);
     script.onerror = () => resolve(false);
@@ -98,6 +98,7 @@ function PlanCard({
   currentSub,
   userName,
   userEmail,
+  isIndia,
   onActivated,
 }: {
   plan: SubscriptionPlan;
@@ -105,29 +106,46 @@ function PlanCard({
   currentSub: OrganizationSubscription | null;
   userName: string;
   userEmail: string;
+  isIndia: boolean;
   onActivated: () => void;
 }) {
   const [loading, setLoading] = useState(false);
-  const Icon = PLAN_ICONS[plan.slug] ?? Zap;
+  const Icon   = PLAN_ICONS[plan.slug] ?? Zap;
   const accent = PLAN_ACCENT[plan.slug];
 
   const isFree    = plan.slug === "free";
   const isCurrent = currentSub?.plan?.slug === plan.slug;
-  const isActive  = currentSub?.status === "active" || currentSub?.status === "free";
+
+  // Currency routing: India → INR, everyone else → USD
+  const currency: "INR" | "USD" = isIndia ? "INR" : "USD";
+
+  // Display price based on detected region
+  const displayPrice = isFree
+    ? "Free"
+    : isIndia
+    ? plan.display_price        // e.g. "₹999"
+    : plan.display_price_usd;   // e.g. "$12"
+
+  // Secondary line (opposite currency for reference)
+  const secondaryPrice = isFree
+    ? null
+    : isIndia
+    ? plan.price_monthly_usd > 0 ? `≈ $${plan.price_monthly_usd} USD` : null
+    : plan.price_monthly_inr > 0 ? `≈ ₹${plan.price_monthly_inr.toLocaleString("en-IN")} INR` : null;
 
   const handleUpgrade = async () => {
     if (isFree || isCurrent) return;
     setLoading(true);
 
     try {
-      const loaded = await loadRazorpayScript();
+      const loaded = await loadCheckoutScript();
       if (!loaded) {
-        toast.error("Could not load Razorpay checkout. Check your internet connection.");
+        toast.error("Could not load payment checkout. Check your internet connection.");
         return;
       }
 
-      // Create subscription on backend → get Razorpay subscription ID + key
-      const { razorpay_subscription_id, key_id } = await createSubscription(plan.slug);
+      // Pass detected currency to backend — it will use the correct Razorpay plan ID
+      const { razorpay_subscription_id, key_id } = await createSubscription(plan.slug, currency);
 
       const rzp = new window.Razorpay({
         key: key_id,
@@ -135,7 +153,7 @@ function PlanCard({
 
         // Branding
         name: "Orqentra — Financial OS",
-        description: `${plan.name} Plan · ₹${plan.price_monthly_inr.toLocaleString("en-IN")} / month`,
+        description: `${plan.name} Plan · ${displayPrice} / month`,
         image: "/favicon.ico",
 
         // Pre-fill with real user data from session
@@ -144,7 +162,10 @@ function PlanCard({
           email: userEmail,
         },
 
-        theme: { color: "#4f46e5" },
+        theme: { color: "#7c3aed" },
+
+        // Currency for this checkout — matches the Razorpay plan
+        currency,
 
         // Called by Razorpay after successful payment
         handler: async (response: {
@@ -155,7 +176,7 @@ function PlanCard({
           try {
             await verifySubscriptionPayment(response);
             toast.success(`🎉 Upgraded to ${plan.name}! Your new limits are now active.`);
-            onActivated();          // reload subscription state
+            onActivated();
           } catch {
             toast.error(
               "Payment was received but server activation failed. " +
@@ -186,7 +207,7 @@ function PlanCard({
     if (loading)   return <Loader2 size={14} className="animate-spin" />;
     if (isCurrent) return <><CheckCircle2 size={14} /> Current Plan</>;
     if (isFree)    return "Free — No payment needed";
-    return <>Upgrade with Razorpay <ArrowRight size={13} /></>;
+    return <>Upgrade Now <ArrowRight size={13} /></>;
   };
 
   return (
@@ -227,15 +248,19 @@ function PlanCard({
         </div>
 
         <div className="flex items-baseline gap-1">
-          <span className="text-3xl font-black text-white">{plan.display_price}</span>
+          <span className="text-3xl font-black text-white">{displayPrice}</span>
           {!isFree && (
             <span className="text-sm" style={{ color: "var(--color-text-muted)" }}> / month</span>
           )}
         </div>
-        {!isFree && (
+        {!isFree && secondaryPrice && (
           <p className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>
-            Billed monthly · 
+            Billed monthly ·{" "}
+            <span style={{ color: "rgba(167,139,250,0.65)" }}>{secondaryPrice}</span>
           </p>
+        )}
+        {!isFree && !secondaryPrice && (
+          <p className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>Billed monthly</p>
         )}
       </div>
 
@@ -289,10 +314,12 @@ function PlanCard({
           {ctaLabel()}
         </button>
 
-        {/* Razorpay trust badge on paid plans */}
         {!isFree && !isCurrent && (
-          <p className="text-center text-xs mt-2 flex items-center justify-center gap-1" style={{ color: "var(--color-text-muted)" }}>
-            <ShieldCheck size={10} /> Secured by Razorpay
+          <p
+            className="text-center text-xs mt-2 flex items-center justify-center gap-1"
+            style={{ color: "var(--color-text-muted)" }}
+          >
+            <ShieldCheck size={10} /> Secure Payment
           </p>
         )}
       </div>
@@ -303,9 +330,12 @@ function PlanCard({
 /* ── Page ────────────────────────────────────────────────────────────────── */
 export default function PricingPage() {
   const { data: session } = useSession();
-  const [plans, setPlans]       = useState<SubscriptionPlan[]>([]);
+  const [plans, setPlans]           = useState<SubscriptionPlan[]>([]);
   const [currentSub, setCurrentSub] = useState<OrganizationSubscription | null>(null);
-  const [loading, setLoading]   = useState(true);
+  const [loading, setLoading]       = useState(true);
+
+  // Currency is detected by the backend from the real request IP (works with VPN)
+  const [isIndia, setIsIndia] = useState(true); // default INR until backend responds
 
   const userName  = session?.user?.name  ?? "";
   const userEmail = session?.user?.email ?? "";
@@ -319,6 +349,8 @@ export default function PricingPage() {
       ]);
       setPlans(plansRes.plans);
       setCurrentSub(subRes);
+      // Backend detects currency from the real IP — correctly handles VPN
+      setIsIndia(plansRes.detected_currency === "INR");
     } catch {
       toast.error("Failed to load pricing data");
     } finally {
@@ -337,21 +369,17 @@ export default function PricingPage() {
     >
       {/* Hero */}
       <motion.div variants={iv} className="text-center space-y-3">
-        <div
-          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold mb-2"
-          style={{
-            background: "rgba(139,92,246,0.1)",
-            color: "#a78bfa",
-            border: "1px solid rgba(139,92,246,0.2)",
-          }}
-        >
-          <ShieldCheck size={12} /> Payments by Razorpay
+        <div className="flex items-center justify-center gap-2 flex-wrap">
         </div>
+
         <h1 className="text-4xl font-black text-white">
           Simple, Transparent Pricing
         </h1>
         <p className="text-base max-w-lg mx-auto" style={{ color: "var(--color-text-secondary)" }}>
-          Start free — no credit card needed. Upgrade when you need more invoices or AI prompts.
+          Start free — no credit card needed.{" "}
+          {isIndia
+            ? "Upgrade with your preferred payment method."
+            : "International cards accepted worldwide — pay in USD."}
         </p>
 
         {/* Current plan status */}
@@ -373,7 +401,7 @@ export default function PricingPage() {
                 <span style={{ color: new Date(currentSub.current_period_end) < new Date() ? "#f87171" : "#fbbf24" }}>
                   {new Date(currentSub.current_period_end) < new Date()
                     ? "Trial expired"
-                    : `Trial expires ${new Date(currentSub.current_period_end).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`
+                    : `Trial expires ${new Date(currentSub.current_period_end).toLocaleDateString(isIndia ? "en-IN" : "en-US", { day: "numeric", month: "short", year: "numeric" })}`
                   }
                 </span>
               </>
@@ -400,19 +428,24 @@ export default function PricingPage() {
               currentSub={currentSub}
               userName={userName}
               userEmail={userEmail}
+              isIndia={isIndia}
               onActivated={loadData}
             />
           ))}
         </motion.div>
       )}
 
+
+
       {/* Footer */}
       <motion.div variants={iv} className="text-center space-y-1">
         <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
-          g.
+          We never store your card details. All transactions are PCI DSS compliant.
         </p>
         <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
-          Payments are processed by <span className="text-white font-medium">Razorpay</span> — we never store your card details.
+          {isIndia
+            ? "Billed in INR. UPI, cards, net banking, and wallets accepted."
+            : "Billed in USD. International cards accepted."}
         </p>
       </motion.div>
     </motion.div>

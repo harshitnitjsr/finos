@@ -10,8 +10,11 @@ export interface SubscriptionPlan {
   name: string;
   description: string;
   price_monthly_inr: number;
-  display_price: string;
+  price_monthly_usd: number;       // 0 for free
+  display_price: string;           // e.g. "₹999"
+  display_price_usd: string;       // e.g. "$12"
   razorpay_plan_id: string | null;
+  razorpay_plan_id_usd: string | null;
   max_invoices_per_month: number;
   max_prompts_per_month: number;
   sort_order: number;
@@ -23,6 +26,7 @@ export interface OrganizationSubscription {
   status: "free" | "active" | "past_due" | "cancelled" | "paused";
   plan: SubscriptionPlan;
   razorpay_subscription_id: string | null;
+  billing_currency: "INR" | "USD";  // currency used at checkout
   current_period_start: string | null;
   current_period_end: string | null;
   invoices_used: number;
@@ -38,7 +42,10 @@ export interface CreateSubscriptionResponse {
 }
 
 /** Fetch all available plans (public, no auth needed) */
-export async function getPlans(): Promise<{ plans: SubscriptionPlan[] }> {
+export async function getPlans(): Promise<{
+  plans: SubscriptionPlan[];
+  detected_currency: "INR" | "USD";  // backend-detected from caller IP
+}> {
   return apiFetch("/subscriptions/plans");
 }
 
@@ -47,13 +54,16 @@ export async function getCurrentSubscription(): Promise<OrganizationSubscription
   return apiFetch("/subscriptions/current");
 }
 
-/** Create a Razorpay subscription for a plan slug */
+/** Create a Razorpay subscription for a plan slug.
+ *  currency: "INR" for India, "USD" for international (default: "INR")
+ */
 export async function createSubscription(
-  plan_slug: string
+  plan_slug: string,
+  currency: "INR" | "USD" = "INR"
 ): Promise<CreateSubscriptionResponse> {
   return apiFetch("/subscriptions/create", {
     method: "POST",
-    body: JSON.stringify({ plan_slug }),
+    body: JSON.stringify({ plan_slug, currency }),
   });
 }
 

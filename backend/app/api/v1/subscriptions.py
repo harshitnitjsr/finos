@@ -2,27 +2,35 @@
 Subscriptions API — Razorpay-powered billing for AFOS.
 
 Routes:
-  GET  /subscriptions/plans           List all available plans
+  GET  /subscriptions/plans           List all available plans (includes INR + USD pricing)
   GET  /subscriptions/current         Current org's subscription + usage
   POST /subscriptions/create          Create a Razorpay subscription & get payment link
+                                      Body: { plan_slug, currency: "INR" | "USD" }
   POST /subscriptions/verify          Verify payment signature after checkout
   POST /subscriptions/cancel          Cancel the active subscription (downgrades to Free)
   POST /subscriptions/webhook         Razorpay webhook handler (public — no internal token)
 
+Currency routing:
+  India users    → currency="INR" → uses plan.razorpay_plan_id     (INR Razorpay plan)
+  International  → currency="USD" → uses plan.razorpay_plan_id_usd (USD Razorpay plan)
+  Razorpay handles multi-currency checkout transparently for 135+ currencies / 180+ countries.
+
 Razorpay Subscription flow:
-  1. Frontend calls POST /subscriptions/create with plan_slug
+  1. Frontend calls POST /subscriptions/create with { plan_slug, currency }
   2. Backend creates a Razorpay Subscription and returns a short_url
   3. User pays on Razorpay-hosted page
   4. Razorpay fires subscription.activated webhook → we activate
   5. Monthly auto-charge: invoice.paid webhook → we reset usage counters
   6. Cancel/failure: subscription.cancelled webhook → downgrade to free
 """
+
 import hashlib
 import hmac
 import json
 from datetime import datetime, timezone
 from typing import Optional
 
+import httpx
 import razorpay
 from fastapi import APIRouter, Depends, HTTPException, Request
 from loguru import logger
@@ -64,8 +72,11 @@ def _plan_to_dict(p: SubscriptionPlan) -> dict:
         "name": p.name,
         "description": p.description,
         "price_monthly_inr": p.price_monthly_inr,
+        "price_monthly_usd": getattr(p, "price_monthly_usd", 0) or 0,
         "display_price": f"₹{p.price_monthly_inr:,}" if p.price_monthly_inr > 0 else "Free",
+        "display_price_usd": f"${getattr(p, 'price_monthly_usd', 0)}" if (getattr(p, 'price_monthly_usd', 0) or 0) > 0 else "Free",
         "razorpay_plan_id": p.razorpay_plan_id,
+        "razorpay_plan_id_usd": getattr(p, "razorpay_plan_id_usd", None),
         "max_invoices_per_month": p.max_invoices_per_month,
         "max_prompts_per_month": p.max_prompts_per_month,
         "is_active": p.is_active,
@@ -80,12 +91,69 @@ def _sub_to_dict(sub: OrganizationSubscription, plan: SubscriptionPlan) -> dict:
         "status": sub.status,
         "plan": _plan_to_dict(plan),
         "razorpay_subscription_id": sub.razorpay_subscription_id,
+        "billing_currency": getattr(sub, "billing_currency", "INR") or "INR",
         "current_period_start": sub.current_period_start.isoformat() if sub.current_period_start else None,
         "current_period_end": sub.current_period_end.isoformat() if sub.current_period_end else None,
         "invoices_used": sub.invoices_used,
         "prompts_used": sub.prompts_used,
         "created_at": sub.created_at.isoformat(),
     }
+
+
+async def _detect_currency_from_ip(request: Request) -> str:
+    """
+    Detect billing currency from the caller's IP address.
+    Returns "INR" for India, "USD" for every other country.
+
+    - Production: uses the real client IP from request headers
+    - Local dev / localhost: calls ip-api.com without an IP param so it
+      detects the SERVER's own outbound IP — which reflects VPN if active.
+    """
+    client_ip = (
+        request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        or request.headers.get("X-Real-IP", "")
+        or (request.client.host if request.client else "")
+    )
+
+    is_local = client_ip in ("127.0.0.1", "::1", "localhost", "")
+
+    # Primary: ipinfo.io (HTTPS, reliable)  |  Fallback: ip-api.com (HTTP)
+    primary_url  = "https://ipinfo.io/json"       if is_local else f"https://ipinfo.io/{client_ip}/json"
+    fallback_url = "http://ip-api.com/json/"      if is_local else f"http://ip-api.com/json/{client_ip}"
+
+    async with httpx.AsyncClient(timeout=4.0) as client:
+
+        # ── Primary: ipinfo.io ───────────────────────────────────────────
+        try:
+            resp = await client.get(primary_url)
+            resp.raise_for_status()
+            country_code = resp.json().get("country", "")
+            if country_code:
+                currency = "INR" if country_code == "IN" else "USD"
+                logger.debug(f"[geo/primary] {client_ip or 'server'} → {country_code} → {currency}")
+                return currency
+        except Exception as exc:
+            logger.warning(
+                f"[geo/primary] ipinfo.io failed ({type(exc).__name__}: {exc}), trying fallback..."
+            )
+
+        # ── Fallback: ip-api.com ─────────────────────────────────────────
+        try:
+            resp = await client.get(fallback_url, params={"fields": "countryCode"})
+            resp.raise_for_status()
+            country_code = resp.json().get("countryCode", "")
+            if country_code:
+                currency = "INR" if country_code == "IN" else "USD"
+                logger.debug(f"[geo/fallback] {client_ip or 'server'} → {country_code} → {currency}")
+                return currency
+        except Exception as exc:
+            logger.warning(
+                f"[geo/fallback] ip-api.com failed ({type(exc).__name__}: {exc}) — defaulting to INR"
+            )
+
+    return "INR"
+
+
 
 
 async def _get_or_create_sub(org_id: str, db: AsyncSession):
@@ -122,21 +190,30 @@ async def _get_or_create_sub(org_id: str, db: AsyncSession):
 # ── Routes ───────────────────────────────────────────────────────────────────
 
 @router.get("/plans")
-async def list_plans(db: AsyncSession = Depends(get_db)):
-    """Return all active subscription plans (public, no org required)."""
-    cached = await cache.get("subscriptions", "all_plans")
-    if cached:
-        return cached
+async def list_plans(request: Request, db: AsyncSession = Depends(get_db)):
+    """
+    Return all active subscription plans + detected billing currency for this caller.
+    Plans are cached; currency is detected fresh per-request from the caller's IP.
+    """
+    # Detect currency from IP (per-request, never cached — each caller has a different IP)
+    detected_currency = await _detect_currency_from_ip(request)
 
-    result = await db.execute(
-        select(SubscriptionPlan)
-        .where(SubscriptionPlan.is_active == True)  # noqa: E712
-        .order_by(SubscriptionPlan.sort_order)
-    )
-    plans = result.scalars().all()
-    response = {"plans": [_plan_to_dict(p) for p in plans]}
-    await cache.set("subscriptions", response, 300, "all_plans")
-    return response
+    # Plans list itself can be cached (same for everyone)
+    cached_plans = await cache.get("subscriptions", "all_plans_v2")
+    if not cached_plans:
+        result = await db.execute(
+            select(SubscriptionPlan)
+            .where(SubscriptionPlan.is_active == True)  # noqa: E712
+            .order_by(SubscriptionPlan.sort_order)
+        )
+        plans = result.scalars().all()
+        cached_plans = [_plan_to_dict(p) for p in plans]
+        await cache.set("subscriptions", cached_plans, 300, "all_plans_v2")
+
+    return {
+        "plans": cached_plans,
+        "detected_currency": detected_currency,  # "INR" or "USD"
+    }
 
 
 @router.get("/current")
@@ -150,7 +227,8 @@ async def get_current_subscription(
 
 
 class CreateSubscriptionBody(BaseModel):
-    plan_slug: str  # starter | pro | enterprise
+    plan_slug: str            # starter | pro | enterprise
+    currency:  str = "INR"   # "INR" (India) or "USD" (international)
 
 
 @router.post("/create")
@@ -172,6 +250,11 @@ async def create_subscription(
     if body.plan_slug == "free":
         raise HTTPException(status_code=400, detail="Cannot 'subscribe' to the Free plan.")
 
+    # Validate currency
+    billing_currency = body.currency.upper()
+    if billing_currency not in ("INR", "USD"):
+        raise HTTPException(status_code=400, detail="currency must be 'INR' or 'USD'.")
+
     # Fetch plan
     plan_result = await db.execute(
         select(SubscriptionPlan)
@@ -181,12 +264,24 @@ async def create_subscription(
     plan = plan_result.scalar_one_or_none()
     if not plan:
         raise HTTPException(status_code=404, detail=f"Plan '{body.plan_slug}' not found.")
-    if not plan.razorpay_plan_id:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Razorpay Plan ID not configured for '{body.plan_slug}'. "
-                   f"Set RAZORPAY_PLAN_ID_{body.plan_slug.upper()} in .env.",
-        )
+
+    # Pick the correct Razorpay plan ID based on currency
+    if billing_currency == "USD":
+        razorpay_plan_id = getattr(plan, "razorpay_plan_id_usd", None)
+        if not razorpay_plan_id:
+            raise HTTPException(
+                status_code=503,
+                detail=f"USD Razorpay Plan ID not configured for '{body.plan_slug}'. "
+                       f"Set RAZORPAY_PLAN_ID_{body.plan_slug.upper()}_USD in .env.",
+            )
+    else:
+        razorpay_plan_id = plan.razorpay_plan_id
+        if not razorpay_plan_id:
+            raise HTTPException(
+                status_code=503,
+                detail=f"INR Razorpay Plan ID not configured for '{body.plan_slug}'. "
+                       f"Set RAZORPAY_PLAN_ID_{body.plan_slug.upper()} in .env.",
+            )
 
     # Get org details for Razorpay customer
     org = await db.get(Organization, org_id)
@@ -204,24 +299,26 @@ async def create_subscription(
     # Create Razorpay subscription
     try:
         rz_sub = rz.subscription.create({
-            "plan_id": plan.razorpay_plan_id,
-            "total_count": 12,          # 12 billing cycles (1 year); can be extended
+            "plan_id": razorpay_plan_id,
+            "total_count": 12,          # 12 billing cycles (1 year)
             "quantity": 1,
             "customer_notify": 1,
             "notes": {
                 "org_id": org_id,
                 "org_name": org.name,
                 "plan_slug": plan.slug,
+                "currency": billing_currency,
             },
         })
     except Exception as e:
         logger.error(f"Razorpay subscription create failed: {e}")
         raise HTTPException(status_code=502, detail=f"Razorpay error: {e}")
 
-    # Save pending subscription ID
+    # Save pending subscription ID and billing currency
     sub.razorpay_subscription_id = rz_sub["id"]
-    sub.plan_id = plan.id  # switch plan (activated on webhook)
-    sub.updated_at = datetime.utcnow()
+    sub.plan_id          = plan.id  # switch plan (activated on webhook)
+    sub.billing_currency = billing_currency
+    sub.updated_at       = datetime.utcnow()
     await db.commit()
 
     # Bust cache

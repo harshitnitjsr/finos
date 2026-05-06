@@ -19,8 +19,13 @@ class Settings(BaseSettings):
     TEMPORAL_NAMESPACE: str = "default"
     TEMPORAL_TASK_QUEUE: str = "afos-task-queue"
     
-    # OpenAI
+    # OpenAI (fallback — only used when DO_INFERENCE_API_KEY is not set)
     OPENAI_API_KEY: str = ""
+
+    # DigitalOcean Inference Hub — OpenAI-compatible, billed from DO credits
+    # Get key: DO Control Panel → Inference → API Keys → Generate
+    DO_INFERENCE_API_KEY: str = ""
+    DO_INFERENCE_BASE_URL: str = "https://inference.do-ai.run/v1"
     
     # Stripe
     STRIPE_SECRET_KEY: str = ""
@@ -36,10 +41,17 @@ class Settings(BaseSettings):
     RAZORPAY_CLIENT_ID: str = ""  # Partner OAuth
     RAZORPAY_CLIENT_SECRET: str = ""
 
-    # Razorpay Subscription Plan IDs (create these in Razorpay Dashboard → Products → Plans)
-    RAZORPAY_PLAN_ID_STARTER: str = ""   # e.g. plan_xxxx
-    RAZORPAY_PLAN_ID_PRO: str = ""        # e.g. plan_yyyy
-    RAZORPAY_PLAN_ID_ENTERPRISE: str = "" # e.g. plan_zzzz
+    # Razorpay Subscription Plan IDs — INR (India) plans
+    # Create in: Razorpay Dashboard → Products → Plans (currency = INR)
+    RAZORPAY_PLAN_ID_STARTER:    str = ""   # e.g. plan_xxxx
+    RAZORPAY_PLAN_ID_PRO:        str = ""   # e.g. plan_yyyy
+    RAZORPAY_PLAN_ID_ENTERPRISE: str = ""   # e.g. plan_zzzz
+
+    # Razorpay Subscription Plan IDs — USD (International) plans
+    # Create in: Razorpay Dashboard → Products → Plans (currency = USD)
+    RAZORPAY_PLAN_ID_STARTER_USD:    str = ""   # e.g. plan_aaaa
+    RAZORPAY_PLAN_ID_PRO_USD:        str = ""   # e.g. plan_bbbb
+    RAZORPAY_PLAN_ID_ENTERPRISE_USD: str = ""   # e.g. plan_cccc
 
     # Frontend base URL for redirects after payment
     APP_BASE_URL: str = "http://localhost:3000"
@@ -50,11 +62,12 @@ class Settings(BaseSettings):
     # Payment system
     PAYMENT_BASE_URL: str = "http://localhost:8000"  # For webhook registration
     
-    # Model Router
+    # Model Router — plain model names (DO prefix added automatically at runtime)
+    # When DO_INFERENCE_API_KEY is set, 'gpt-4o' becomes 'openai-gpt-4o' automatically.
     MODEL_ROUTER_REASONING: str = "gpt-4o"
     MODEL_ROUTER_EXTRACTION: str = "gpt-4o-mini"
     MODEL_ROUTER_CLASSIFICATION: str = "gpt-4o-mini"
-    MODEL_ROUTER_EMBEDDING: str = "text-embedding-3-small"
+    MODEL_ROUTER_EMBEDDING: str = "text-embedding-3-small"   # DO maps to bge-m3
     MODEL_ROUTER_FORECAST: str = "gpt-4o"
     MODEL_ROUTER_COMPLIANCE: str = "gpt-4o"
     

@@ -267,6 +267,7 @@ PLAN_CATALOG = [
         "name": "Free",
         "description": "30-day trial — 5 invoices & 10 AI prompts.",
         "price_monthly_inr": 0,
+        "price_monthly_usd": 0,
         "max_invoices_per_month": 5,   # lifetime cap for free (no monthly reset)
         "max_prompts_per_month": 10,   # lifetime cap for free (no monthly reset)
         "sort_order": 0,
@@ -276,6 +277,7 @@ PLAN_CATALOG = [
         "name": "Starter",
         "description": "For small teams managing their finances.",
         "price_monthly_inr": 999,
+        "price_monthly_usd": 12,       # $12 / month (international)
         "max_invoices_per_month": 100,
         "max_prompts_per_month": 500,
         "sort_order": 1,
@@ -285,6 +287,7 @@ PLAN_CATALOG = [
         "name": "Pro",
         "description": "For growing businesses with high invoice volume.",
         "price_monthly_inr": 2999,
+        "price_monthly_usd": 36,       # $36 / month (international)
         "max_invoices_per_month": 1000,
         "max_prompts_per_month": 5000,
         "sort_order": 2,
@@ -294,8 +297,9 @@ PLAN_CATALOG = [
         "name": "Enterprise",
         "description": "Unlimited everything for large organisations.",
         "price_monthly_inr": 7999,
-        "max_invoices_per_month": -1,    # unlimited
-        "max_prompts_per_month": -1,     # unlimited
+        "price_monthly_usd": 96,       # $96 / month (international)
+        "max_invoices_per_month": -1,  # unlimited
+        "max_prompts_per_month": -1,   # unlimited
         "sort_order": 3,
     },
 ]
@@ -303,6 +307,20 @@ PLAN_CATALOG = [
 
 async def seed_subscription_plans():
     """Upsert all subscription plans — idempotent, runs on every startup."""
+    from app.core.config import settings
+
+    # Map slug → Razorpay plan IDs from environment variables
+    PLAN_IDS_INR = {
+        "starter":    settings.RAZORPAY_PLAN_ID_STARTER,
+        "pro":        settings.RAZORPAY_PLAN_ID_PRO,
+        "enterprise": settings.RAZORPAY_PLAN_ID_ENTERPRISE,
+    }
+    PLAN_IDS_USD = {
+        "starter":    settings.RAZORPAY_PLAN_ID_STARTER_USD,
+        "pro":        settings.RAZORPAY_PLAN_ID_PRO_USD,
+        "enterprise": settings.RAZORPAY_PLAN_ID_ENTERPRISE_USD,
+    }
+
     async with AsyncSessionLocal() as db:
         for plan_data in PLAN_CATALOG:
             existing = await db.execute(
@@ -312,23 +330,32 @@ async def seed_subscription_plans():
 
             if plan:
                 # Update mutable fields in case they changed in code
-                plan.name = plan_data["name"]
-                plan.description = plan_data["description"]
-                plan.price_monthly_inr = plan_data["price_monthly_inr"]
+                plan.name                   = plan_data["name"]
+                plan.description            = plan_data["description"]
+                plan.price_monthly_inr      = plan_data["price_monthly_inr"]
+                plan.price_monthly_usd      = plan_data["price_monthly_usd"]
                 plan.max_invoices_per_month = plan_data["max_invoices_per_month"]
-                plan.max_prompts_per_month = plan_data["max_prompts_per_month"]
-                plan.sort_order = plan_data["sort_order"]
-                plan.updated_at = datetime.utcnow()
+                plan.max_prompts_per_month  = plan_data["max_prompts_per_month"]
+                plan.sort_order             = plan_data["sort_order"]
+                plan.updated_at             = datetime.utcnow()
+                # Sync Razorpay plan IDs from env if configured
+                if PLAN_IDS_INR.get(plan_data["slug"]):
+                    plan.razorpay_plan_id     = PLAN_IDS_INR[plan_data["slug"]]
+                if PLAN_IDS_USD.get(plan_data["slug"]):
+                    plan.razorpay_plan_id_usd = PLAN_IDS_USD[plan_data["slug"]]
             else:
                 plan = SubscriptionPlan(
-                    slug=plan_data["slug"],
-                    name=plan_data["name"],
-                    description=plan_data["description"],
-                    price_monthly_inr=plan_data["price_monthly_inr"],
-                    max_invoices_per_month=plan_data["max_invoices_per_month"],
-                    max_prompts_per_month=plan_data["max_prompts_per_month"],
-                    sort_order=plan_data["sort_order"],
-                    is_active=True,
+                    slug                    = plan_data["slug"],
+                    name                    = plan_data["name"],
+                    description             = plan_data["description"],
+                    price_monthly_inr       = plan_data["price_monthly_inr"],
+                    price_monthly_usd       = plan_data["price_monthly_usd"],
+                    razorpay_plan_id        = PLAN_IDS_INR.get(plan_data["slug"]) or None,
+                    razorpay_plan_id_usd    = PLAN_IDS_USD.get(plan_data["slug"]) or None,
+                    max_invoices_per_month  = plan_data["max_invoices_per_month"],
+                    max_prompts_per_month   = plan_data["max_prompts_per_month"],
+                    sort_order              = plan_data["sort_order"],
+                    is_active               = True,
                 )
                 db.add(plan)
 
@@ -341,4 +368,9 @@ async def seed_subscription_plans():
         except Exception:
             pass  # Redis may not be up yet at startup; that's fine
 
-        logger.info("✅ Subscription plans seeded (4 tiers: Free ₹0 / Starter ₹999 / Pro ₹2,999 / Enterprise ₹7,999)")
+        logger.info(
+            "✅ Subscription plans seeded — "
+            "INR: Free ₹0 / Starter ₹999 / Pro ₹2,999 / Enterprise ₹7,999 | "
+            "USD: Free $0 / Starter $12 / Pro $36 / Enterprise $96"
+        )
+
