@@ -929,6 +929,15 @@ export default function HomePage() {
               </div>
               <p className="text-2xl text-white/20 font-black tracking-tight leading-snug">The world&apos;s first elite orchestration OS.</p>
             </div>
+            
+            <div className="flex gap-16">
+              <div className="flex flex-col gap-4">
+                <span className="text-xs font-black uppercase tracking-widest text-white/40 mb-2">Legal</span>
+                <Link href="/privacy" className="text-sm font-bold text-white/20 hover:text-white transition-colors">Privacy Policy</Link>
+                <Link href="/terms" className="text-sm font-bold text-white/20 hover:text-white transition-colors">Terms & Conditions</Link>
+                <Link href="/refund" className="text-sm font-bold text-white/20 hover:text-white transition-colors">Refund Policy</Link>
+              </div>
+            </div>
           </div>
           <div className="max-w-7xl mx-auto mt-40 pt-12 border-t border-white/5 flex justify-between items-center text-[10px] font-black tracking-widest text-white/10 uppercase">
             <span>© 2026 ORQENTRA INC.</span>
