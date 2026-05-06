@@ -271,12 +271,18 @@ export default function InvoicesPage() {
               )}
               
               <div className="flex gap-2 pt-4 mt-4 border-t border-slate-700/50">
-                <button 
-                  onClick={() => startTemporalMutation.mutate(selected.id as string)}
-                  disabled={startTemporalMutation.isPending || selected.status === "processing"}
-                  className="flex-1 py-2 bg-blue-500/20 text-blue-400 font-semibold rounded-lg text-xs hover:bg-blue-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
-                  {startTemporalMutation.isPending || selected.status === "processing" ? "Processing..." : "Start Workflow"}
-                </button>
+                {selected.status === "paid" ? (
+                  <div className="flex-1 py-2 bg-emerald-500/10 text-emerald-400 font-semibold rounded-lg text-xs text-center border border-emerald-500/20">
+                    Already Paid
+                  </div>
+                ) : (
+                  <button 
+                    onClick={() => startTemporalMutation.mutate(selected.id as string)}
+                    disabled={startTemporalMutation.isPending || selected.status === "processing"}
+                    className="flex-1 py-2 bg-blue-500/20 text-blue-400 font-semibold rounded-lg text-xs hover:bg-blue-500/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed">
+                    {startTemporalMutation.isPending || selected.status === "processing" ? "Processing..." : "Start Workflow"}
+                  </button>
+                )}
                 {selected.status === "awaiting_approval" && (
                   <>
                     <button 
