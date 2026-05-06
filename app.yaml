@@ -259,3 +259,11 @@ services:
       - key: SMTP_FROM_EMAIL
         scope: RUN_TIME
         value: $SMTP_FROM_EMAIL
+
+  - name: opa
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    source_dir: backend
+    dockerfile_path: Dockerfile.opa
+    internal_ports:
+      - 8181

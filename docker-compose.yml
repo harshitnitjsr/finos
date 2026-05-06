@@ -37,7 +37,7 @@ services:
       - "--watch"
       - "/policies"
     volumes:
-      - ./policies:/policies
+      - ./backend/policies:/policies
 
   # UI tools for remote debugging
   adminer:

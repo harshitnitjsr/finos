@@ -1,45 +1,42 @@
-# ─────────────────────────────────────────────────────────────────────────────
-# AFOS — Temporal Server (Cloud DB Edition)
-# ─────────────────────────────────────────────────────────────────────────────
-# This configuration points the Temporal engine to your EXTERNAL cloud 
-# database (Neon/Supabase), removing the need for a local DB container.
-# ─────────────────────────────────────────────────────────────────────────────
-
 version: '3.8'
 
 services:
   temporal-server:
     image: temporalio/auto-setup:1.24.0
     container_name: temporal-server
+
     environment:
-      # --- External Database Connection (Neon/Supabase) ---
-      - DB=postgresql
+      - DB=postgres12
+
+      - POSTGRES_SEEDS=$EXTERNAL_DB_HOST
       - DB_PORT=5432
-      - POSTGRES_SEEDS=$EXTERNAL_DB_HOST      # e.g. ep-late-dawn-12345.us-east-2.aws.neon.tech
-      - POSTGRES_USER=$EXTERNAL_DB_USER      # e.g. temporal_user
-      - POSTGRES_PWD=$EXTERNAL_DB_PASSWORD   # e.g. your_db_password
-      
-      # Temporal needs two separate databases (create them in Neon first)
-      - TEMPORAL_DB=temporal
-      - TEMPORAL_VISIBILITY_DB=temporal_visibility
-      
-      # Important for Cloud DBs like Neon/Supabase
-      - ENABLE_TLS=true 
-      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development_sql.yaml
+
+      - POSTGRES_USER=$EXTERNAL_DB_USER
+      - POSTGRES_PWD=$EXTERNAL_DB_PASSWORD
+
+      - POSTGRES_TLS_ENABLED=true
+      - SQL_TLS_ENABLED=true
+
+      - SQL_DATABASE=temporal
+      - SQL_VISIBILITY_DATABASE=temporal_visibility
+
+      - DYNAMIC_CONFIG_FILE_PATH=/etc/temporal/config/dynamicconfig/development_sql.yaml
+
     ports:
       - "7233:7233"
-    healthcheck:
-      test: ["CMD", "timeout", "5", "bash", "-c", "</dev/tcp/127.0.0.1/7233"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+
+    volumes:
+      - ./dynamicconfig:/etc/temporal/config/dynamicconfig
 
   temporal-ui:
     image: temporalio/ui:latest
     container_name: temporal-ui
+
     depends_on:
       - temporal-server
+
     environment:
       - TEMPORAL_ADDRESS=temporal-server:7233
+
     ports:
       - "8080:8080"
