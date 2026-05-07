@@ -10,7 +10,7 @@ services:
       deploy_on_push: true
 
     source_dir: backend
-    dockerfile_path: Dockerfile
+    dockerfile_path: backend/Dockerfile
 
     http_port: 8000
 
@@ -221,7 +221,7 @@ services:
       deploy_on_push: true
 
     source_dir: backend
-    dockerfile_path: Dockerfile
+    dockerfile_path: backend/Dockerfile
 
     internal_ports:
       - 8181
