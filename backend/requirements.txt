@@ -95,7 +95,6 @@ python-dotenv==1.0.1
 python-jose==3.3.0
 python-multipart==0.0.12
 pytz==2026.1.post1
-pywin32==311
 PyYAML==6.0.3
 qdrant-client==1.11.3
 razorpay==2.0.1
@@ -128,5 +127,4 @@ vine==5.1.0
 watchfiles==1.1.1
 wcwidth==0.6.0
 websockets==13.1
-win32_setctime==1.2.0
 yarl==1.23.0
