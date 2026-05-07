@@ -215,7 +215,7 @@ services:
         value: ${PLATFORM_COMMISSION_PERCENT}
 
 workers:
-  - name: temporal-worker
+  - name: background-worker
 
     github:
       repo: harshitnitjsr/finos
@@ -225,10 +225,10 @@ workers:
     source_dir: backend
     dockerfile_path: Dockerfile
 
-    run_command: python temporal_worker.py
+    run_command: sh start_workers.sh
 
     instance_count: 1
-    instance_size_slug: basic-xs
+    instance_size_slug: basic-xxs
 
     envs:
       - key: DATABASE_URL
@@ -282,16 +282,3 @@ workers:
       - key: OPENAI_API_KEY
         scope: RUN_TIME
         value: ${OPENAI_API_KEY}
-
-  - name: opa
-
-    github:
-      repo: harshitnitjsr/finos
-      branch: main
-      deploy_on_push: true
-
-    source_dir: backend
-    dockerfile_path: Dockerfile.opa
-
-    instance_count: 1
-    instance_size_slug: basic-xxs
