@@ -223,7 +223,8 @@ services:
     source_dir: backend
     dockerfile_path: Dockerfile
 
-    http_port: 8181
+    internal_ports:
+      - 8181
 
     run_command: sh start_workers.sh
 
