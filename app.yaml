@@ -56,7 +56,7 @@ services:
 
       - key: OPA_URL
         scope: RUN_TIME
-        value: ${OPA_URL}
+        value: http://background-worker:8181/v1/data/finance
 
       # --- App Secrets ---
       - key: APP_SECRET_KEY
@@ -214,9 +214,7 @@ services:
         scope: RUN_TIME
         value: ${PLATFORM_COMMISSION_PERCENT}
 
-workers:
   - name: background-worker
-
     github:
       repo: harshitnitjsr/finos
       branch: main
@@ -224,6 +222,8 @@ workers:
 
     source_dir: backend
     dockerfile_path: Dockerfile
+
+    http_port: 8181
 
     run_command: sh start_workers.sh
 
@@ -265,7 +265,7 @@ workers:
 
       - key: OPA_URL
         scope: RUN_TIME
-        value: ${OPA_URL}
+        value: http://localhost:8181/v1/data/finance
 
       - key: APP_SECRET_KEY
         scope: RUN_TIME

@@ -19,7 +19,12 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     gcc \
     python3-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Open Policy Agent (OPA) binary
+RUN curl -L -o /usr/local/bin/opa https://openpolicyagent.org/downloads/v0.61.0/opa_linux_amd64_static && \
+    chmod 755 /usr/local/bin/opa
 
 # Set the working directory in the container
 WORKDIR /app
