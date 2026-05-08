@@ -35,7 +35,7 @@ export default function AddExpenseModal({ isOpen, onClose, onSuccess, defaultCur
   useEffect(() => {
     if (isOpen) {
       setFormData(prev => ({ ...prev, currency: defaultCurrency }));
-      apiFetch<{ vendors: VendorOption[] }>("/vendors/")
+      apiFetch<{ vendors: VendorOption[] }>("/vendors")
         .then(r => setVendors(r.vendors || []))
         .catch(() => setVendors([]));
     }
@@ -74,7 +74,7 @@ export default function AddExpenseModal({ isOpen, onClose, onSuccess, defaultCur
     setError(null);
 
     try {
-      await apiFetch("/expenses/", {
+      await apiFetch("/expenses", {
         method: "POST",
         body: JSON.stringify({
           ...formData,
