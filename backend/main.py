@@ -77,16 +77,16 @@ async def lifespan(app: FastAPI):
 
 PUBLIC_PREFIXES = (
     "/health",
-    "/api/docs",
-    "/api/redoc",
+    "/docs",
+    "/redoc",
     "/openapi.json",
     # Webhook endpoints — called by external services (Razorpay, Stripe, etc.)
     # that cannot send our internal X-Internal-Token header
-    "/api/v1/payments/webhook/",
-    "/api/v1/payments/razorpay-webhook",
-    "/api/v1/payments/stripe-webhook",
+    "/v1/payments/webhook/",
+    "/v1/payments/razorpay-webhook",
+    "/v1/payments/stripe-webhook",
     # Razorpay subscription lifecycle webhooks
-    "/api/v1/subscriptions/webhook",
+    "/v1/subscriptions/webhook",
 )
 
 
@@ -98,8 +98,8 @@ class InternalAuthMiddleware(BaseHTTPMiddleware):
         if any(path.startswith(p) for p in PUBLIC_PREFIXES):
             return await call_next(request)
 
-        # Only enforce on /api/v1/* routes
-        if not path.startswith("/api/v1"):
+        # Only enforce on /v1/* routes
+        if not path.startswith("/v1"):
             return await call_next(request)
 
         # CORS preflight — browser strips all custom headers from OPTIONS requests,
@@ -131,8 +131,8 @@ app = FastAPI(
     title="AFOS — AI Financial Operating System",
     description="Autonomous Financial Operating System API",
     version="1.0.0",
-    docs_url="/api/docs",
-    redoc_url="/api/redoc",
+    docs_url="/docs",
+    redoc_url="/redoc",
     lifespan=lifespan,
 )
 
@@ -156,7 +156,7 @@ _os.makedirs(settings.STORAGE_LOCAL_PATH, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=settings.STORAGE_LOCAL_PATH), name="uploads")
 
 # Include API routes
-app.include_router(api_router, prefix="/api/v1")
+app.include_router(api_router, prefix="/v1")
 
 
 @app.get("/health")
