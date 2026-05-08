@@ -82,11 +82,11 @@ PUBLIC_PREFIXES = (
     "/openapi.json",
     # Webhook endpoints — called by external services (Razorpay, Stripe, etc.)
     # that cannot send our internal X-Internal-Token header
-    "/v1/payments/webhook/",
-    "/v1/payments/razorpay-webhook",
-    "/v1/payments/stripe-webhook",
+    "/payments/webhook/",
+    "/payments/razorpay-webhook",
+    "/payments/stripe-webhook",
     # Razorpay subscription lifecycle webhooks
-    "/v1/subscriptions/webhook",
+    "/subscriptions/webhook",
 )
 
 
@@ -98,8 +98,9 @@ class InternalAuthMiddleware(BaseHTTPMiddleware):
         if any(path.startswith(p) for p in PUBLIC_PREFIXES):
             return await call_next(request)
 
-        # Only enforce on /v1/* routes
-        if not path.startswith("/v1"):
+        # Enforce internal token on all other routes
+        # (Since DO stripped /api, the paths are just /vendors, /payments, etc.)
+        if path == "/":
             return await call_next(request)
 
         # CORS preflight — browser strips all custom headers from OPTIONS requests,
@@ -156,8 +157,8 @@ import os as _os
 _os.makedirs(settings.STORAGE_LOCAL_PATH, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=settings.STORAGE_LOCAL_PATH), name="uploads")
 
-# Include API routes
-app.include_router(api_router, prefix="/v1")
+# Include API routes without any prefix (DO strips /api)
+app.include_router(api_router)
 
 
 @app.get("/health")
