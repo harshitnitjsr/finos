@@ -16,6 +16,7 @@ from qdrant_client.models import (
     MatchValue,
     SearchParams,
     UpdateStatus,
+    PayloadSchemaType,
 )
 
 from app.core.config import settings
@@ -71,6 +72,19 @@ class VectorStoreService:
                     logger.info(f"Qdrant: created collection '{name}'")
                 else:
                     logger.info(f"Qdrant: collection '{name}' already exists")
+
+                # Ensure org_id index exists (required by some Qdrant providers like DO/Cloud)
+                try:
+                    await self.client.create_payload_index(
+                        collection_name=name,
+                        field_name="org_id",
+                        field_schema=PayloadSchemaType.KEYWORD,
+                    )
+                    logger.info(f"Qdrant: ensured 'org_id' index for '{name}'")
+                except Exception as e:
+                    # Ignore if index already exists or other non-critical issues
+                    if "already exists" not in str(e).lower():
+                        logger.warning(f"Qdrant: could not create 'org_id' index for {name}: {e}")
 
             self._initialized = True
             logger.info("✅ Qdrant vector store initialized")
