@@ -12,9 +12,16 @@ declare global {
 }
 
 function createPool(): Pool {
-  const connectionString = process.env.DATABASE_URL;
+  let connectionString = process.env.DATABASE_URL;
 
   if (connectionString) {
+    // Prepare for pg v9 libpq semantics
+    if (
+      connectionString.includes("sslmode=require") &&
+      !connectionString.includes("uselibpqcompat=true")
+    ) {
+      connectionString += (connectionString.includes("?") ? "&" : "?") + "uselibpqcompat=true";
+    }
     return new Pool({ connectionString, max: 10 });
   }
 
